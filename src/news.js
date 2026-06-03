@@ -1,8 +1,21 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import Parser from 'rss-parser';
 import { config } from './config.js';
 import { log } from './log.js';
 
 const parser = new Parser({ timeout: 15000 });
+
+/** Заголовки недавно опубликованных статей (для защиты от повторов при 3 постах/день). */
+async function loadRecentTitles(limit = 8) {
+  try {
+    const file = path.resolve(config.site.dir, 'posts.json');
+    const posts = JSON.parse(await readFile(file, 'utf8'));
+    return posts.slice(0, limit).map((p) => p.title).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 // Новости свежее этого порога считаем актуальными.
 const FRESH_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -148,7 +161,19 @@ export async function fetchTopic() {
   });
   scored.sort((a, b) => b.score - a.score);
 
-  const top = scored[0];
+  // Защита от повторов: не берём тему, о которой недавно уже писали (важно при 3 постах/день).
+  const recentStemSets = (await loadRecentTitles(8)).map((t) => new Set(keywords(t)));
+  const isRecentDuplicate = (title) => {
+    const kw = keywords(title);
+    if (kw.length === 0) return false;
+    return recentStemSets.some((set) => {
+      const overlap = kw.filter((s) => set.has(s)).length / kw.length;
+      return overlap >= 0.6; // >60% ключевых слов совпали с недавней статьёй
+    });
+  };
+  const top = scored.find((x) => !isRecentDuplicate(x.title)) || scored[0];
+  if (top !== scored[0]) log.info('Самый горячий повод уже освещён недавно — беру следующий свежий.');
+
   const trendKeywords = [...freq.entries()]
     .filter(([, c]) => c >= 2)
     .sort((a, b) => b[1] - a[1])
