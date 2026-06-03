@@ -1,0 +1,292 @@
+# AI Tools Blog — Project Plan
+
+## Идея проекта
+
+Автоматический медиа-проект на тему **ИИ-инструментов** для русскоязычной аудитории.
+Контент генерируется на автомате, публикуется одновременно на нескольких площадках.
+Цель — монетизация через рекламу (Яндекс Дзен + Telegram).
+
+---
+
+## Архитектура (без сервера)
+
+```
+GitHub Actions (бесплатно, cron каждый день 10:00 МСК)
+    ↓
+Node.js скрипт (генерация + публикация)
+    ↓
+OpenRouter (gpt-5-mini) → генерирует статью про ИИ-инструменты
+    ↓
+├── Telegram канал — Bot API (пост с картинкой)
+└── Сайт на GitHub Pages + RSS → импорт в Яндекс Дзен
+```
+
+**Сервер не нужен.** Всё работает через GitHub Actions бесплатно.
+
+---
+
+## Площадки публикации
+
+| Площадка | Способ | Статус |
+|---|---|---|
+| **Telegram канал** | Bot API | 🔜 Создать |
+| **Яндекс Дзен** | Zen Publisher API | 🔜 Создать |
+
+### Будущие площадки (после старта):
+- ВКонтакте — VK API
+- TenChat — API
+- Собственный сайт — если проект докажет жизнеспособность
+
+---
+
+## Стек технологий
+
+- **Язык**: Node.js (JavaScript, ESM)
+- **Генерация контента**: OpenRouter `openai/gpt-5-mini` (переключаемо на Groq/OpenAI через `PROVIDER`)
+- **Картинки**: Unsplash API (бесплатно)
+- **Источник тем**: Google News RSS + частотный «трендоскоп» (свежесть + популярность)
+- **Сайт/Дзен**: GitHub Pages (статика) + RSS-лента → импорт в Дзен
+- **Планировщик**: GitHub Actions (cron)
+- **Хранение ключей**: GitHub Secrets/Variables
+
+---
+
+## Тематика контента
+
+**Основная тема**: ИИ-инструменты для русскоязычной аудитории
+
+**Примеры тем для статей:**
+- Топ-5 промптов для ChatGPT на каждый день
+- Как использовать ИИ для работы / учёбы / бизнеса
+- Обзоры новых ИИ-инструментов (Midjourney, Suno, Claude и т.д.)
+- Новости мира ИИ (парсинг актуальных тем)
+- Лайфхаки с нейросетями
+
+**Запросы для парсинга Google News RSS:**
+- «искусственный интеллект новости»
+- «нейросети инструменты 2026»
+- «ChatGPT Midjourney обновление»
+
+---
+
+## Монетизация
+
+### Яндекс Дзен
+- Порог входа: 10 000 минут дочитываний в месяц
+- Срок до первых выплат: ~2-4 месяца при активном росте
+- Ключевое условие: живой, полезный контент (не шаблонный AI-текст)
+
+### Telegram канал
+- Биржи рекламы: Telega.in, Tgstat
+- Прямые рекламодатели — от 5-10к подписчиков
+- Тематика ИИ = высокий спрос со стороны рекламодателей
+
+---
+
+## Скрипт генерации (план)
+
+```
+scripts/
+    generate_and_post.js   — основной скрипт
+    
+.github/
+    workflows/
+        daily_post.yml     — cron расписание GitHub Actions
+```
+
+### Логика скрипта:
+1. Парсинг Google News RSS по ИИ-тематике → актуальные темы
+2. Groq (Llama 3.3 70b) генерирует статью (500-700 слов, живой язык, конкретные примеры)
+3. Unsplash → тематическое фото
+4. Публикация в Telegram (один пост: картинка + текст + ссылка на Дзен)
+5. Публикация в Яндекс Дзен через Zen Publisher API
+
+---
+
+## Требования к контенту (важно для Дзен)
+
+- Живой язык, не шаблонный
+- Конкретные примеры и кейсы
+- Структура: заголовок → суть → примеры → вывод
+- Объём: 500-800 слов
+- Уникальность: каждая статья на новую подтему
+- НЕ упоминать что текст написан ИИ
+
+---
+
+## Инструкция: Groq API (бесплатная генерация текста)
+
+### Что такое Groq
+Groq — бесплатный AI API на базе модели Llama 3.3 70b от Meta. Работает быстрее Claude и GPT, бесплатный лимит: **14 400 запросов в день** — нам хватит на годы вперёд (1 запрос/день).
+
+### Как получить ключ
+1. Зайти на **console.groq.com**
+2. Зарегистрироваться через Google аккаунт
+3. Перейти в **API Keys → Create API Key**
+4. Скопировать ключ — это и есть `GROQ_API_KEY`
+
+### Как используется в скрипте
+```js
+const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    model: 'llama-3.3-70b-versatile',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 2048,
+  }),
+});
+const data = await response.json();
+const text = data.choices[0].message.content;
+```
+
+### Бесплатные лимиты
+| Лимит | Значение |
+|---|---|
+| Запросов в минуту | 30 |
+| Запросов в день | 14 400 |
+| Токенов в минуту | 6 000 |
+| Цена | **$0** |
+
+---
+
+## Инструкция: публикация в Яндекс Дзен через RSS
+
+> ⚠️ **ВАЖНО (проверено 2026):** у Яндекс Дзена **НЕТ открытого API для автопубликации**.
+> Эндпоинт `api.zen.yandex.ru/v1/publisher/articles` из ранней версии плана не существует.
+> Единственный штатный способ автопубликации — **импорт RSS-ленты с собственного сайта.**
+
+### Архитектура решения
+Скрипт-автопостер генерирует статьи как страницы статического сайта на **GitHub Pages**
+(бесплатно, без сервера) и обновляет **RSS-ленту** (`docs/rss.xml`). Дзен подключается
+к этой ленте и импортирует новые статьи автоматически. Бонус: сайт = третья площадка.
+
+### Шаг 1 — Создать канал на Яндекс Дзен
+1. Зайти на **dzen.ru** → «Создать канал» → тип **Блог**.
+2. Заполнить название, описание, тематику «Технологии».
+
+### Шаг 2 — Включить GitHub Pages
+1. В репозитории: **Settings → Pages**.
+2. Source: **Deploy from a branch**, branch `main`, папка **/docs**.
+3. URL сайта будет вида `https://USERNAME.github.io/REPO` — это `SITE_URL`.
+
+### Шаг 3 — Подключить RSS к Дзену
+1. Накопить в ленте **минимум 10 статей** (требование Дзена) — скрипт постит по 1/день.
+2. На сайте должно быть **≥3 публикации за последний месяц**.
+3. В Дзене: подключить RSS-ленту `https://USERNAME.github.io/REPO/rss.xml`,
+   подтвердить владение доменом.
+
+### Требования Дзена к RSS (учтены в `src/site.js`)
+- namespaces `yandex` / `media`, `content:encoded` (полный HTML) или `yandex:full-text`;
+- `title` (≤200), `link` (≤243 ASCII), `pubDate` (RFC-822), картинка через `enclosure`;
+- актуальность материалов — последние 8 дней, файл ленты ≤10 МБ.
+
+---
+
+## Инструкция: GitHub Actions (cron без сервера)
+
+### Шаг 1 — Создать репозиторий
+1. Зайти на **github.com** → **New repository**
+2. Название: `ai-blog-autoposter` (или любое)
+3. Тип: **Private** (чтобы скрипты и конфиги не были публичны)
+4. Нажать **Create repository**
+
+### Шаг 2 — Добавить API-ключи в Secrets
+Это безопасное хранилище — ключи не видны никому, даже тебе после сохранения.
+
+1. В репозитории: **Settings → Secrets and variables → Actions**
+2. Нажать **New repository secret**
+3. Добавить по одному:
+
+**Secrets** (Settings → Secrets and variables → Actions → *Secrets*):
+
+| Name | Value |
+|---|---|
+| `OPENROUTER_API_KEY` | ключ OpenRouter (генерация текста) |
+| `UNSPLASH_ACCESS_KEY` | ключ Unsplash (опц.) |
+| `TELEGRAM_BOT_TOKEN` | токен Telegram-бота |
+| `TELEGRAM_CHANNEL_ID` | `@название_канала` |
+
+**Variables** (там же, вкладка *Variables* — не секретные):
+
+| Name | Value |
+|---|---|
+| `PROVIDER` | `openrouter` |
+| `OPENROUTER_MODEL` | `openai/gpt-5-mini` |
+| `SITE_URL` | `https://USERNAME.github.io/REPO` |
+| `SITE_TITLE` / `SITE_DESCRIPTION` | название и описание сайта |
+
+### Шаг 3 — Создать файл расписания
+Создать файл `.github/workflows/daily_post.yml` в репозитории:
+
+```yaml
+name: Daily AI Post
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # каждый день в 07:00 UTC = 10:00 МСК
+  workflow_dispatch:        # ручной запуск для теста
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run post generator
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZEN_PUBLISHER_TOKEN: ${{ secrets.ZEN_PUBLISHER_TOKEN }}
+        run: node scripts/generate_and_post.js
+```
+
+### Шаг 4 — Проверить работу
+1. После пуша файла зайти в **Actions** вкладку репозитория
+2. Нажать **Run workflow** (ручной запуск для теста)
+3. Смотришь логи — всё должно пройти без ошибок
+4. Дальше GitHub сам запускает каждый день в 10:00 МСК
+
+> **Бесплатный лимит GitHub Actions**: 2000 минут/месяц.
+> Один запуск скрипта ≈ 1-2 минуты. На месяц уйдёт ~60 минут — в 30 раз меньше лимита.
+
+---
+
+## Чек-лист запуска
+
+- [ ] Создать Telegram-канал (ИИ-тематика)
+- [ ] Создать Telegram-бота для постинга
+- [ ] Зарегистрировать канал на Яндекс Дзен
+- [ ] Получить Zen Publisher API ключ
+- [ ] Написать скрипт `generate_and_post.js`
+- [ ] Настроить GitHub Actions (cron)
+- [ ] Добавить все API-ключи в GitHub Secrets
+- [ ] Тестовый запуск
+- [ ] Первая публикация
+
+---
+
+## API ключи (хранить в GitHub Secrets)
+
+| Переменная | Описание |
+|---|---|
+| `OPENROUTER_API_KEY` | OpenRouter (генерация статей, gpt-5-mini) |
+| `UNSPLASH_ACCESS_KEY` | Unsplash фото (опц.) |
+| `TELEGRAM_BOT_TOKEN` | Telegram бот |
+| `TELEGRAM_CHANNEL_ID` | ID канала |
+| `SITE_URL` | URL сайта GitHub Pages (для RSS → Дзен) |
+
+> Доп. бесплатные фолбэк-провайдеры: `GROQ_API_KEY` (Llama), `OPENAI_API_KEY` (прямой OpenAI).

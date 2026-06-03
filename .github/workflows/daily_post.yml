@@ -1,0 +1,62 @@
+name: Daily AI Post
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # каждый день в 07:00 UTC = 10:00 МСК
+  workflow_dispatch:        # ручной запуск для теста
+    inputs:
+      dry_run:
+        description: 'Dry run (сгенерировать без публикации)'
+        type: boolean
+        default: false
+
+# Нужно для коммита сгенерированных файлов сайта (docs/) обратно в репозиторий.
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run post generator
+        env:
+          PROVIDER: ${{ vars.PROVIDER || 'openrouter' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          SITE_TITLE: ${{ vars.SITE_TITLE }}
+          SITE_DESCRIPTION: ${{ vars.SITE_DESCRIPTION }}
+          SITE_AUTHOR: ${{ vars.SITE_AUTHOR }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/generate_and_post.js
+
+      - name: Commit generated site
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --staged --quiet; then
+            echo "Нет изменений сайта для коммита."
+          else
+            git commit -m "post: новая статья $(date -u +%Y-%m-%d)"
+            git push
+          fi
