@@ -36,3 +36,35 @@ export async function fetchImage(query) {
     return null;
   }
 }
+
+/**
+ * Получает несколько фото за один запрос (обложка + иллюстрации в текст).
+ * Возвращает массив (может быть короче count или пустым). Первый элемент — обложка.
+ */
+export async function fetchImages(query, count = 3) {
+  if (!config.unsplash.accessKey) {
+    log.warn('UNSPLASH_ACCESS_KEY не задан — публикую без картинок.');
+    return [];
+  }
+
+  const n = Math.max(1, Math.min(count, 10));
+  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high&count=${n}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Client-ID ${config.unsplash.accessKey}` },
+    });
+    if (!res.ok) throw new Error(`Unsplash ${res.status}`);
+    const data = await res.json();
+    const list = (Array.isArray(data) ? data : [])
+      .map((d) => ({ url: d.urls?.regular, author: d.user?.name, authorUrl: d.user?.links?.html }))
+      .filter((x) => x.url);
+    if (list.length === 0) throw new Error('пустой ответ');
+
+    log.ok(`Картинок с Unsplash: ${list.length} (обложка + ${list.length - 1} в текст)`);
+    return list;
+  } catch (err) {
+    log.warn(`Не удалось получить фото с Unsplash (${err.message}) — публикую без картинок.`);
+    return [];
+  }
+}

@@ -32,6 +32,25 @@ const STOPWORDS = new Set([
   'for', 'with', 'how', 'new', 'are', 'you', 'your', 'this', 'that', 'из-за', 'млн', 'тыс',
 ]);
 
+/**
+ * Чувствительные темы, за которые Дзен снижает/отключает монетизацию
+ * (политика, война, трагедии, насилие). Держимся чистых ИИ-инструментов.
+ * Матчинг по подстроке в нормализованном (нижний регистр) заголовке.
+ */
+const SENSITIVE = [
+  'политик', 'выбор', 'президент', 'путин', 'кремл', 'госдум', 'депутат', 'министр',
+  'санкц', 'пмэф', 'форум', 'саммит', 'переговор',
+  'войн', 'военн', 'фронт', 'обстрел', 'ракет', 'дрон', 'бпла', 'мобилизац', 'всу',
+  'украин', 'нато', 'оруж', 'взрыв', 'теракт', 'убий', 'насил', 'погиб', 'жертв',
+  'ранен', 'смерт', 'катастроф', 'авари', 'пожар', 'наводнен', 'землетряс', 'трагед',
+  'протест', 'митинг', 'арест', 'уголовн', 'суд ', 'мигрант', 'религ', 'скандал',
+];
+
+function isSensitive(title) {
+  const t = title.toLowerCase();
+  return SENSITIVE.some((w) => t.includes(w));
+}
+
 /** URL Google News RSS для поискового запроса (русская локаль). */
 function searchUrl(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ru&gl=RU&ceid=RU:ru`;
@@ -107,15 +126,18 @@ export async function fetchTopic() {
   const seen = new Set();
   const now = Date.now();
   const all = [];
+  let droppedSensitive = 0;
   for (const it of items) {
     const title = cleanTitle(it.title);
     if (!title) continue;
+    if (isSensitive(title)) { droppedSensitive++; continue; } // безопасно для монетизации Дзена
     const key = normalize(title);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const ts = it.isoDate ? Date.parse(it.isoDate) : NaN;
     all.push({ title, ts: Number.isNaN(ts) ? null : ts });
   }
+  if (droppedSensitive) log.info(`Отсеяно чувствительных тем (политика/трагедии): ${droppedSensitive}`);
 
   if (all.length === 0) {
     log.warn('Новостей не получено — использую запасную тему.');

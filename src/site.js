@@ -50,6 +50,23 @@ function cdata(html) {
   return `<![CDATA[${String(html).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
+/**
+ * Равномерно вставляет иллюстрации между абзацами статьи
+ * (дольше читают/скроллят → больше минут чтения, что важно для монетизации Дзена).
+ * URL берётся «сырым»: в CDATA RSS символ & допустим, браузеры в src его тоже терпят.
+ */
+function insertInlineImages(html, images = []) {
+  if (!images.length) return html;
+  const parts = html.split('</p>');
+  if (parts.length < 3) return html; // слишком короткая статья — не дробим
+  const slots = images.length;
+  for (let i = 0; i < slots; i++) {
+    const pos = Math.min(Math.max(Math.floor((parts.length * (i + 1)) / (slots + 1)), 1), parts.length - 1);
+    parts[pos] = `<p><img src="${images[i].url}" alt=""></p>` + parts[pos];
+  }
+  return parts.join('</p>');
+}
+
 const postsFile = () => path.resolve(config.site.dir, 'posts.json');
 
 async function loadPosts() {
@@ -66,7 +83,7 @@ async function loadPosts() {
  *
  * Если SITE_URL не задан — мягко пропускает (как и другие площадки).
  */
-export async function publishToSite(article, image) {
+export async function publishToSite(article, image, inlineImages = []) {
   if (!config.site.url) {
     log.warn('SITE_URL не задан — пропускаю генерацию сайта/RSS для Дзена.');
     return { skipped: true };
@@ -79,7 +96,7 @@ export async function publishToSite(article, image) {
   const post = {
     slug,
     title: article.title,
-    html: article.html,
+    html: insertInlineImages(article.html, inlineImages),
     excerpt: toPlainText(article.html).slice(0, 220),
     tags: article.tags || [],
     image: image?.url ? { url: image.url, author: image.author || '' } : null,

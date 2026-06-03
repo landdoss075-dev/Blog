@@ -4,7 +4,7 @@ import { config, assertRequired } from '../src/config.js';
 import { log } from '../src/log.js';
 import { fetchTopic } from '../src/news.js';
 import { generateArticle } from '../src/llm.js';
-import { fetchImage } from '../src/unsplash.js';
+import { fetchImages } from '../src/unsplash.js';
 import { postToTelegram } from '../src/telegram.js';
 import { publishToSite } from '../src/site.js';
 
@@ -27,24 +27,26 @@ async function main() {
   log.step(`2/5 Генерация статьи (${config.provider})`);
   const article = await generateArticle(topic);
 
-  // 3. Картинка
-  log.step('3/5 Подбор картинки (Unsplash)');
-  const image = await fetchImage(article.image_query);
+  // 3. Картинки (обложка + иллюстрации в текст)
+  log.step('3/5 Подбор картинок (Unsplash)');
+  const images = await fetchImages(article.image_query, 3);
+  const image = images[0] || null;          // обложка
+  const inlineImages = images.slice(1);      // в текст статьи (для сайта/Дзена)
 
   // Dry-run: сохраняем результат в out/ и выходим
   if (config.dryRun) {
-    await saveDryRun({ topic, article, image });
+    await saveDryRun({ topic, article, image, inlineImages });
     log.ok('DRY RUN завершён — ничего не опубликовано.');
     return;
   }
 
-  // 4. Telegram
+  // 4. Telegram (обложка + текст)
   log.step('4/5 Публикация в Telegram');
   const tg = await safe('Telegram', () => postToTelegram(article, image));
 
   // 5. Сайт + RSS (источник для импорта в Яндекс Дзен)
   log.step('5/5 Обновление сайта/RSS (для Дзена)');
-  const site = await safe('Site', () => publishToSite(article, image));
+  const site = await safe('Site', () => publishToSite(article, image, inlineImages));
 
   log.step('Итог');
   summarize({ tg, site });
