@@ -161,18 +161,28 @@ export async function fetchTopic() {
   });
   scored.sort((a, b) => b.score - a.score);
 
-  // Защита от повторов: не берём тему, о которой недавно уже писали (важно при 3 постах/день).
-  const recentStemSets = (await loadRecentTitles(8)).map((t) => new Set(keywords(t)));
+  // Защита от повторов (важно при 3 постах/день, чтобы не плодить дубли одной темы).
+  const recentTitles = await loadRecentTitles(8);
+  const recentStemSets = recentTitles.map((t) => new Set(keywords(t)));
+  const recentStemsAll = new Set(recentTitles.flatMap((t) => keywords(t)));
+  // «Мега-событие дня» — самый частый тренд-стем. Если день им «захвачен» (≥3 заголовков)
+  // и мы о нём уже писали, берём повод из другого кластера, а не другой заголовок про то же.
+  const topStem = [...freq.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const floodCovered = topStem && (freq.get(topStem) || 0) >= 3 && recentStemsAll.has(topStem);
+
   const isRecentDuplicate = (title) => {
     const kw = keywords(title);
     if (kw.length === 0) return false;
-    return recentStemSets.some((set) => {
-      const overlap = kw.filter((s) => set.has(s)).length / kw.length;
-      return overlap >= 0.6; // >60% ключевых слов совпали с недавней статьёй
-    });
+    // 1) почти тот же заголовок (сильное пересечение слов)
+    const near = recentStemSets.some(
+      (set) => kw.filter((s) => set.has(s)).length / kw.length >= 0.5,
+    );
+    // 2) повод из «захватившего день» мега-события, о котором уже писали
+    const flood = floodCovered && kw.includes(topStem);
+    return near || flood;
   };
   const top = scored.find((x) => !isRecentDuplicate(x.title)) || scored[0];
-  if (top !== scored[0]) log.info('Самый горячий повод уже освещён недавно — беру следующий свежий.');
+  if (top !== scored[0]) log.info('Тема уже освещена недавно — беру повод из другого кластера.');
 
   const trendKeywords = [...freq.entries()]
     .filter(([, c]) => c >= 2)
@@ -183,8 +193,12 @@ export async function fetchTopic() {
   log.ok(`Горячий повод (счёт ${top.score.toFixed(1)}): «${top.title}»`);
   if (trendKeywords.length) log.info(`Тренды дня: ${trendKeywords.join(', ')}`);
 
+  // Тема — по словам ВЫБРАННОГО заголовка (а не глобальных трендов), чтобы не путать промпт.
+  const topWords = [...new Set(keywords(top.title).map((s) => display.get(s)?.word || s))];
+  const theme = topWords.slice(0, 4).join(', ') || trendKeywords.slice(0, 3).join(', ') || config.newsQueries[0];
+
   return {
-    theme: trendKeywords.slice(0, 3).join(', ') || config.newsQueries[0],
+    theme,
     headline: top.title,
     headlines: scored.slice(0, 6).map((x) => x.title),
     trendKeywords,
