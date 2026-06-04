@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Фон: фирменный фиолетовый -->
+  <rect width="512" height="512" fill="#7C3AED"/>
+
+  <!-- Нейронные связи -->
+  <g stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" opacity="0.95">
+    <line x1="256" y1="256" x2="148" y2="150"/>
+    <line x1="256" y1="256" x2="372" y2="158"/>
+    <line x1="256" y1="256" x2="150" y2="368"/>
+    <line x1="256" y1="256" x2="366" y2="372"/>
+  </g>
+
+  <!-- Узлы сети -->
+  <g fill="#FFFFFF">
+    <circle cx="148" cy="150" r="22"/>
+    <circle cx="372" cy="158" r="22"/>
+    <circle cx="150" cy="368" r="22"/>
+    <circle cx="366" cy="372" r="22"/>
+  </g>
+
+  <!-- Центральный узел -->
+  <circle cx="256" cy="256" r="62" fill="#FFFFFF"/>
+  <!-- Искра (энергия/идея) внутри центрального узла -->
+  <path d="M268 220 L232 264 H254 L244 296 L284 248 H260 Z" fill="#FFC400"/>
+</svg>
