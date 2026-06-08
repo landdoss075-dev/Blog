@@ -22,7 +22,7 @@ const TRANSLIT = {
   э: 'e', ю: 'yu', я: 'ya',
 };
 
-function slugify(title, date) {
+export function slugify(title, date) {
   const translit = title
     .toLowerCase()
     .split('')
@@ -55,7 +55,7 @@ function cdata(html) {
  * (дольше читают/скроллят → больше минут чтения, что важно для монетизации Дзена).
  * URL берётся «сырым»: в CDATA RSS символ & допустим, браузеры в src его тоже терпят.
  */
-function insertInlineImages(html, images = []) {
+export function insertInlineImages(html, images = []) {
   if (!images.length) return html;
   const parts = html.split('</p>');
   if (parts.length < 3) return html; // слишком короткая статья — не дробим

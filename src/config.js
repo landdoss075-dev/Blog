@@ -40,6 +40,12 @@ export const config = {
     channelId: process.env.TELEGRAM_CHANNEL_ID || '',
   },
 
+  // Публикация на сайт atmoapp.ru (через ingest-эндпоинт его бэкенда).
+  atmoapp: {
+    apiUrl: process.env.ATMO_API_URL || '', // напр. https://atmoapp.ru/api
+    secret: process.env.ATMO_INGEST_SECRET || '',
+  },
+
   // Сайт на GitHub Pages — источник RSS-ленты для импорта в Яндекс Дзен.
   site: {
     // Базовый URL сайта, напр. https://USERNAME.github.io/REPO (без слэша в конце).

@@ -7,6 +7,7 @@ import { generateArticle } from '../src/llm.js';
 import { fetchImages } from '../src/unsplash.js';
 import { postToTelegram } from '../src/telegram.js';
 import { publishToSite } from '../src/site.js';
+import { postToAtmoapp } from '../src/atmoapp.js';
 
 /**
  * Пайплайн ежедневной публикации:
@@ -41,15 +42,19 @@ async function main() {
   }
 
   // 4. Telegram (обложка + текст)
-  log.step('4/5 Публикация в Telegram');
+  log.step('4/6 Публикация в Telegram');
   const tg = await safe('Telegram', () => postToTelegram(article, image));
 
   // 5. Сайт + RSS (источник для импорта в Яндекс Дзен)
-  log.step('5/5 Обновление сайта/RSS (для Дзена)');
+  log.step('5/6 Обновление сайта/RSS (для Дзена)');
   const site = await safe('Site', () => publishToSite(article, image, inlineImages));
 
+  // 6. Сайт atmoapp.ru (бэкенд сам берёт 1/день)
+  log.step('6/6 Публикация на atmoapp.ru');
+  const atmoapp = await safe('Atmoapp', () => postToAtmoapp(article, image, inlineImages));
+
   log.step('Итог');
-  summarize({ tg, site });
+  summarize({ tg, site, atmoapp });
 }
 
 /** Выполняет публикацию, не роняя весь процесс из-за одной площадки. */
@@ -62,13 +67,14 @@ async function safe(name, fn) {
   }
 }
 
-function summarize({ tg, site }) {
+function summarize({ tg, site, atmoapp }) {
   const status = (r) => (r?.error ? `ошибка (${r.error})` : r?.skipped ? 'пропущено' : 'опубликовано');
   log.info(`Telegram: ${status(tg)}`);
   log.info(`Сайт/RSS (Дзен): ${status(site)}`);
+  log.info(`atmoapp.ru: ${status(atmoapp)}`);
 
   // Если ни одна площадка не опубликовала — это провал запуска.
-  const published = [tg, site].some((r) => r && !r.skipped && !r.error);
+  const published = [tg, site, atmoapp].some((r) => r && !r.skipped && !r.error);
   if (!published) {
     throw new Error('Ни одна площадка не опубликовала пост.');
   }

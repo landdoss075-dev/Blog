@@ -47,6 +47,8 @@ jobs:
           SITE_TITLE: ${{ vars.SITE_TITLE }}
           SITE_DESCRIPTION: ${{ vars.SITE_DESCRIPTION }}
           SITE_AUTHOR: ${{ vars.SITE_AUTHOR }}
+          ATMO_API_URL: ${{ vars.ATMO_API_URL }}
+          ATMO_INGEST_SECRET: ${{ secrets.ATMO_INGEST_SECRET }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: node scripts/generate_and_post.js
 
