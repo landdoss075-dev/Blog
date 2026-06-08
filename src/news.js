@@ -30,6 +30,11 @@ const STOPWORDS = new Set([
   'который', 'которые', 'этом', 'про', 'над', 'под', 'при', 'без', 'чтобы', 'после', 'стал',
   'года', 'году', 'год', 'свои', 'всех', 'всё', 'тоже', 'может', 'нас', 'them', 'the', 'and',
   'for', 'with', 'how', 'new', 'are', 'you', 'your', 'this', 'that', 'из-за', 'млн', 'тыс',
+  // Общие слова-«пустышки» — не считаем их ни трендом, ни признаком одной темы при дедупе.
+  'новый', 'новая', 'новое', 'новые', 'версия', 'версии', 'способ', 'способы', 'помощь',
+  'помощью', 'время', 'работа', 'работе', 'работу', 'сегодня', 'прямо', 'сейчас', 'просто',
+  'главное', 'лучшие', 'лучший', 'лучшая', 'быстро', 'нужно', 'можно', 'стало', 'делать',
+  'сделать', 'реально', 'теперь', 'самые', 'самый', 'почему', 'зачем', 'будут', 'россии',
 ]);
 
 /**
@@ -183,28 +188,22 @@ export async function fetchTopic() {
   });
   scored.sort((a, b) => b.score - a.score);
 
-  // Защита от повторов (важно при 3 постах/день, чтобы не плодить дубли одной темы).
-  const recentTitles = await loadRecentTitles(8);
-  const recentStemSets = recentTitles.map((t) => new Set(keywords(t)));
-  const recentStemsAll = new Set(recentTitles.flatMap((t) => keywords(t)));
-  // «Мега-событие дня» — самый частый тренд-стем. Если день им «захвачен» (≥3 заголовков)
-  // и мы о нём уже писали, берём повод из другого кластера, а не другой заголовок про то же.
-  const topStem = [...freq.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const floodCovered = topStem && (freq.get(topStem) || 0) >= 3 && recentStemsAll.has(topStem);
-
+  // Защита от повторов (важно при 3 постах/день и затяжных «флуд-историях» на несколько дней).
+  // Дубль = заголовок делит ≥2 значимых слова (или ≥30% по Жаккару) с любой из недавних статей.
+  // Этого достаточно, чтобы поймать разные формулировки одной и той же истории.
+  const recentKwSets = (await loadRecentTitles(12)).map((t) => new Set(keywords(t)));
   const isRecentDuplicate = (title) => {
     const kw = keywords(title);
     if (kw.length === 0) return false;
-    // 1) почти тот же заголовок (сильное пересечение слов)
-    const near = recentStemSets.some(
-      (set) => kw.filter((s) => set.has(s)).length / kw.length >= 0.5,
-    );
-    // 2) повод из «захватившего день» мега-события, о котором уже писали
-    const flood = floodCovered && kw.includes(topStem);
-    return near || flood;
+    return recentKwSets.some((set) => {
+      let shared = 0;
+      for (const s of kw) if (set.has(s)) shared++;
+      const union = new Set([...kw, ...set]).size || 1;
+      return shared >= 2 || shared / union >= 0.3;
+    });
   };
   const top = scored.find((x) => !isRecentDuplicate(x.title)) || scored[0];
-  if (top !== scored[0]) log.info('Тема уже освещена недавно — беру повод из другого кластера.');
+  if (top !== scored[0]) log.info('Похожая тема уже выходила недавно — взял другой, свежий повод.');
 
   const trendKeywords = [...freq.entries()]
     .filter(([, c]) => c >= 2)
@@ -219,10 +218,15 @@ export async function fetchTopic() {
   const topWords = [...new Set(keywords(top.title).map((s) => display.get(s)?.word || s))];
   const theme = topWords.slice(0, 4).join(', ') || trendKeywords.slice(0, 3).join(', ') || config.newsQueries[0];
 
+  // Контекст для промпта — заголовки из ТОГО ЖЕ кластера, что и выбранный (а не флуд-история).
+  const topKw = new Set(keywords(top.title));
+  const sameCluster = scored.filter((x) => keywords(x.title).some((s) => topKw.has(s)));
+  const headlines = (sameCluster.length ? sameCluster : scored).slice(0, 6).map((x) => x.title);
+
   return {
     theme,
     headline: top.title,
-    headlines: scored.slice(0, 6).map((x) => x.title),
+    headlines,
     trendKeywords,
   };
 }
