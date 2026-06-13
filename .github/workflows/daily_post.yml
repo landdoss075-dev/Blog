@@ -15,6 +15,13 @@ on:
 permissions:
   contents: write
 
+# Строго по очереди: два запуска не идут параллельно, иначе оба берут устаревший
+# docs/posts.json и выбирают одну тему → дубли. С concurrency следующий запуск стартует
+# только после коммита предыдущего, и дедуп видит уже опубликованную статью.
+concurrency:
+  group: daily-post
+  cancel-in-progress: false
+
 jobs:
   post:
     runs-on: ubuntu-latest
