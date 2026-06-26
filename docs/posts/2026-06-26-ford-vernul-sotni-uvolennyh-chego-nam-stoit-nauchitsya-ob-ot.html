@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ford вернул сотни уволенных — чего нам стоит научиться об ответственности ИИ</title>
+<meta name="description" content="Новость про Ford , который вернул сотни уволенных инженеров из-за проблем с качеством после автоматизации — отличная зацепка, но не повод паниковать. Я вижу этот кейс как напоминание: автоматизация без структуры и контро">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Ford вернул сотни уволенных — чего нам стоит научиться об ответственности ИИ">
+<meta property="og:description" content="Новость про Ford , который вернул сотни уволенных инженеров из-за проблем с качеством после автоматизации — отличная зацепка, но не повод паниковать. Я вижу этот кейс как напоминание: автоматизация без структуры и контро">
+<meta property="og:image" content="https://images.unsplash.com/photo-1717386255777-ce60792a2a56?crop=entropy&amp;cs=tinysrgb&amp;fit=max&amp;fm=jpg&amp;ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODI0NTcyMzF8&amp;ixlib=rb-4.1.0&amp;q=80&amp;w=1080">
+<link rel="alternate" type="application/rss+xml" href="../rss.xml">
+</head>
+<body style="max-width:720px;margin:0 auto;padding:24px 16px;font:18px/1.7 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">
+<p><a href="../index.html" style="color:#0a66c2;text-decoration:none">← Все статьи</a></p>
+<h1>Ford вернул сотни уволенных — чего нам стоит научиться об ответственности ИИ</h1>
+<p style="color:#888;font-size:15px">26 июня 2026 г.</p>
+<img src="https://images.unsplash.com/photo-1717386255777-ce60792a2a56?crop=entropy&amp;cs=tinysrgb&amp;fit=max&amp;fm=jpg&amp;ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODI0NTcyMzF8&amp;ixlib=rb-4.1.0&amp;q=80&amp;w=1080" alt="" style="width:100%;border-radius:12px;margin:16px 0">
+<p><b>Новость про Ford</b>, который вернул сотни уволенных инженеров из-за проблем с качеством после автоматизации — отличная зацепка, но не повод паниковать. Я вижу этот кейс как напоминание: автоматизация без структуры и контроля ломает процессы быстрее, чем ускоряет их. Расскажу, как избежать подобной ошибки на практике — конкретно, просто и с промптами, которые можно применить прямо сейчас.</p>
+<h2>Суть проблемы</h2>
+<p>Главная ошибка — слепая доверчивость к результатам автоматизированных систем. Команда видит, что «модель работает», сокращает людей, и остается без процедур валидации, мониторинга и отката. Итог — качество падает, клиенты жалуются, компания возвращает специалистов и тратит в 2–3 раза больше ресурсов на исправление.</p><p><img src="https://images.unsplash.com/photo-1764114440675-62f1465cbee5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODI0NTcyMzF8&ixlib=rb-4.1.0&q=80&w=1080" alt=""></p>
+<h2>Практические шаги, которые реально помогают</h2>
+<ul>
+  <li><b>Ввести обязательный human-in-the-loop</b> на ключевых точках: релиз патча, проверка критичных сигналов, финальная валидация безопасности. Нормальная практика — 10–20% выборки проверять вручную даже при высоком автоматическом покрытии.</li>
+  <li><b>Тесты для моделей = unit-тесты в коде</b>. Проводите регрессионные тесты на сохранённых кейсах, создавайте «canary» релизы для 1% трафика и включайте feature flags, чтобы быстро откатиться.</li>
+  <li><b>Мониторинг дрейфа данных и метрик качества</b>. Настройте алерты по распределению входных фич, по ухудшению метрик и по неожиданным отказам. Инструменты: MLflow/Metaflow для пайплайнов, Evidently/WhyLabs для мониторинга.</li>
+  <li><b>Документирование и чек-листы</b>. Простой чек-лист на релиз: набор контрольных кейсов, допущения модели, ожидаемые диапазоны входных данных. Это спасало меня от «сюрпризов» как минимум три раза.</li>
+  <li><b>Автоматические тест-кейсы генерируемые промптами</b>. Если у вас мало QA-ресурсов — генерируйте сценарии тестирования с помощью моделей, но прогоняйте их через ручную проверку до включения в основной набор.</li>
+</ul>
+<h2>Три конкретных промпта/шаблона</h2>
+<ul>
+  <li><b>Промпт для генерации тест-кейсов к функции:</b> "Describe 20 edge cases for input validation of a function that processes vehicle sensor data: include corrupted inputs, missing fields, extreme values, timing issues. For each case, provide input example and expected behavior." — полученные кейсы прогоняйте через ручную верификацию.</li>
+  <li><b>Промпт для аудита логики модели:</b> "List the top 10 assumptions this ML model makes about production data given these sample inputs and model outputs. For each assumption, suggest one metric and one alert that would detect violation." — помогает быстро формализовать контрольные метрики.</li>
+  <li><b>Промпт для правила отката:</b> "Provide a rollback playbook for a model deployment that starts failing on 3-minute latency and increases error rate by 2x: include steps, responsible roles, and communication template to stakeholders." — готовый сценарий отключения фичи и восстановления.</li>
+</ul>
+<p>Собрал эти практики из нескольких проектов, где мы вместо увольнений возвращали людей в процессы и через пару итераций стабилизировали релизы. Главное — не считать автоматизацию заменой ответственности. Это инструмент, который требует политики и дисциплины.</p>
+<p><b>Вывод:</b> возвращение сотрудников — симптом, а не болезнь. Чтобы не попадать в ту же ситуацию, внедрите human-in-the-loop, тестирование моделей, мониторинг дрейфа и готовые playbook'и для отката. Это съедает небольшой процент бюджета, но экономит кратно больше на исправлении ошибок.</p><p><img src="https://images.unsplash.com/photo-1768745888568-b3ef7c7ba366?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODI0NTcyMzF8&ixlib=rb-4.1.0&q=80&w=1080" alt=""></p>
+<p>А у вас есть своя «страшилка» из автоматизации, которую пришлось чинить вручную?</p><p><b>Понравился разбор?</b> Подпишитесь на канал — впереди ещё больше практичных статей про ИИ-инструменты. А вашим опытом и вопросами делитесь в комментариях.</p>
+<p style="color:#888;font-size:15px">#ИИ #автоматизация #MLops #качество</p>
+</body>
+</html>
