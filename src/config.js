@@ -38,6 +38,9 @@ export const config = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     channelId: process.env.TELEGRAM_CHANNEL_ID || '',
+    // Публичная ссылка на канал — для кросс-промо в статьях на сайте/Дзене.
+    // При смене @username канала достаточно поменять эту переменную.
+    channelUrl: process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/ai_news_blog',
   },
 
   // Публикация на сайт atmoapp.ru (через ingest-эндпоинт его бэкенда).

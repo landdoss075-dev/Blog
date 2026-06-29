@@ -191,7 +191,8 @@ export async function fetchTopic() {
   // Защита от повторов (важно при 3 постах/день и затяжных «флуд-историях» на несколько дней).
   // Дубль = заголовок делит ≥2 значимых слова (или ≥30% по Жаккару) с любой из недавних статей.
   // Этого достаточно, чтобы поймать разные формулировки одной и той же истории.
-  const recentKwSets = (await loadRecentTitles(12)).map((t) => new Set(keywords(t)));
+  const recentTitles = await loadRecentTitles(12);
+  const recentKwSets = recentTitles.map((t) => new Set(keywords(t)));
   const isRecentDuplicate = (title) => {
     const kw = keywords(title);
     if (kw.length === 0) return false;
@@ -228,5 +229,6 @@ export async function fetchTopic() {
     headline: top.title,
     headlines,
     trendKeywords,
+    recentTitles, // недавние заголовки — чтобы модель не повторяла их формулировки
   };
 }
