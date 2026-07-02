@@ -16,7 +16,9 @@ export async function callOpenRouter(messages) {
     model,
     response_format: { type: 'json_object' },
     messages,
-    max_tokens: isReasoning ? 8000 : 2048,
+    // 4000 для обычных моделей: статья 700-1100 слов + версия для Telegram + JSON-обёртка
+    // не влезают в 2048 (Sonnet/gpt-5-mini обрезали бы ответ → битый JSON).
+    max_tokens: isReasoning ? 8000 : 4000,
   };
   if (isReasoning) {
     body.reasoning = { effort: 'low' }; // унифицированный параметр OpenRouter

@@ -28,7 +28,9 @@ export const config = {
 
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
-    model: process.env.OPENROUTER_MODEL || 'openai/gpt-5-mini',
+    // Sonnet 5 — живой человечный текст на русском для массового читателя (против детекта
+    // Дзена) + дешевле 4.6 (интро $2/$10). Сравнение 3 моделей: см. changelog [2026-07-02].
+    model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5',
   },
 
   unsplash: {
