@@ -100,7 +100,31 @@ export function buildMessages(topic) {
   ];
 }
 
-/** Достаёт JSON из ответа модели, даже если он обёрнут в текст/markdown. */
+/**
+ * Экранирует «сырые» управляющие символы (переводы строк, табы) ВНУТРИ строковых
+ * значений JSON — частая поломка ответа модели, из-за которой JSON.parse падает.
+ * Идём по символам, отслеживая, находимся ли внутри строки, и заменяем реальные
+ * \n/\r/\t на их экранированные формы. Уже экранированные (\\) не трогаем.
+ */
+function escapeControlCharsInStrings(json) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of json) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === '\\') { out += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; out += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { out += '\\r'; continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** Достаёт JSON из ответа модели, даже если он обёрнут в текст/markdown или слегка «битый». */
 export function extractJson(raw) {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1] : raw;
@@ -109,7 +133,14 @@ export function extractJson(raw) {
   if (start === -1 || end === -1) {
     throw new Error('В ответе модели не найден JSON');
   }
-  return JSON.parse(candidate.slice(start, end + 1));
+  const slice = candidate.slice(start, end + 1);
+  try {
+    return JSON.parse(slice);
+  } catch {
+    // Частая поломка Sonnet — «сырые» переводы строк/табы внутри строковых значений.
+    // Чиним и пробуем ещё раз (если и это не помогло — пусть бросит исходную ошибку выше по стеку).
+    return JSON.parse(escapeControlCharsInStrings(slice));
+  }
 }
 
 /** Парсит сырой ответ модели в нормализованную и очищенную статью. */

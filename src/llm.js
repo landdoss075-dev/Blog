@@ -32,23 +32,39 @@ export async function generateArticle(topic) {
 
   log.info(`Генерация статьи: провайдер ${name}, модель ${provider.model()}…`);
 
-  // Один ретрай: иногда модель игнорирует формат (1 заголовок / ~180 слов).
-  // Перегенерируем заново (новый случайный формат/стиль), если статья не дотягивает.
+  // До 3 попыток. Ретрай нужен по двум причинам:
+  //  1) битый ответ модели — parseArticle бросает (Sonnet иногда отдаёт невалидный JSON:
+  //     неэкранированные кавычки/переводы строк в значениях). Раньше это роняло весь процесс.
+  //  2) статья не дотянула по качеству (1 заголовок / короткое тело).
+  const MAX_ATTEMPTS = 3;
   let article = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const raw = await provider.call(buildMessages(topic));
-    const candidate = parseArticle(raw);
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let candidate;
+    try {
+      const raw = await provider.call(buildMessages(topic));
+      candidate = parseArticle(raw);
+    } catch (err) {
+      lastError = err;
+      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — перегенерирую…`);
+      continue;
+    }
     const issue = qualityIssue(candidate);
     if (!issue) {
       article = candidate;
       break;
     }
-    if (attempt === 1) {
-      log.warn(`Статья не дотянула (${issue}) — перегенерирую…`);
+    // Качество не дотянуло: на последней попытке публикуем как есть, иначе пробуем снова.
+    if (attempt < MAX_ATTEMPTS) {
+      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: статья не дотянула (${issue}) — перегенерирую…`);
     } else {
-      log.warn(`Повтор тоже слабый (${issue}) — публикую как есть.`);
+      log.warn(`Последняя попытка тоже слабая (${issue}) — публикую как есть.`);
       article = candidate;
     }
+  }
+
+  if (!article) {
+    throw new Error(`Не удалось получить валидную статью за ${MAX_ATTEMPTS} попыток. Последняя ошибка: ${lastError?.message || 'нет'}`);
   }
 
   log.ok(`Статья готова: «${article.title}» (${article.bodyWords} слов, заголовков: ${article.titleVariants.length})`);
