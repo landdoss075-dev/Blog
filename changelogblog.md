@@ -355,3 +355,36 @@ fields html or markdown must be used». Классы RichBlock*/RichText* — э
 
 ### Действует
 - Со следующего cron-поста в канал @ai_news_blog. Дубль записи «на будущее» выше — закрыт.
+
+---
+
+## [2026-07-16] — Фиксы: битый JSON от модели + один пост в Telegram
+
+### Фикс 1: генератор падал на битом JSON (утренний пост не выходил)
+Health-check прислал алерт «Ежедневная статья упала» (07:00 UTC). Причина: Sonnet 5
+иногда отдаёт JSON с сырыми переводами строк/табами внутри строковых значений
+(html/telegram) → `parseArticle` бросал `SyntaxError: Bad control character`. Ретрай
+ловил только качество, но НЕ исключение парсинга → битый ответ ронял весь процесс.
+- `src/prompt.js`: `extractJson` при ошибке чинит сырые \n/\r/\t внутри строковых
+  значений и парсит повторно (посимвольный проход с отслеживанием «внутри строки»).
+- `src/llm.js`: `parseArticle` в try/catch, до 3 попыток. Битый ответ = перегенерировать.
+
+### Фикс 2: в Telegram выходило 2 поста → теперь 1 (картинка внутри Rich)
+Раньше: обложка (sendPhoto) отдельным сообщением + статья (sendRichMessage) отдельным
+→ разорванно. Теперь один пост: обложка встроена в Rich.
+- КАК: `InputRichMessage` имеет поле `media` (Array of InputRichMessageMedia). В html
+  ставим `<img src="tg://photo?id=cover">`, в media — `[{id:'cover', media:{type:'photo',
+  media:<URL>}}]`. `InputMediaPhoto.media` принимает HTTP-URL напрямую — Telegram сам
+  скачивает картинку, file_id НЕ нужен (это и был блокер «RichBlockPhoto требует file_id»).
+- `src/telegram.js`: один `sendRichMessage` с media[] вместо sendPhoto+sendRichMessage.
+  Фолбэк (если Rich упадёт) сам шлёт фото+текст обычным постом.
+- Инлайн-картинки статьи (из atmoapp) в TG-посте не показываются (нужна привязка через
+  media[] по id) — для авто-постов это не важно (обложка идёт из image, тело без инлайн-img).
+
+### Проверено
+- Оба фикса: dry-run зелёный, юнит-тест repair на реальной поломке. Telegram — живые
+  посты в канал @ai_news_blog (msg 148, 149): один пост, картинка сверху + статья.
+
+### Скилл
+- Создан скилл `.claude/skills/telegram-post/` — как вручную опубликовать статью в
+  Telegram-канал через Rich Messages (для разовых/ручных публикаций).
