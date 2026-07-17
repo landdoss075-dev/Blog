@@ -8,7 +8,8 @@
 
 ### Сделано
 - Добавлен отдельный workflow `.github/workflows/daily_dacha_post.yml` для ниши `dacha`.
-- Расписание: 1 раз в день, 08:00 UTC / 11:00 МСК; также есть ручной `workflow_dispatch` с `dry_run`.
+- Расписание обновлено до темпа «Нейробудней»: **3 раза в день** — 07:00/12:00/17:00 UTC
+  (10:00/15:00/20:00 МСК); также есть ручной `workflow_dispatch` с `dry_run`.
 - Генерация запускается как `node scripts/generate_and_post.js --niche=dacha`.
 - Модель генерации — **та же, что у «Нейробудней»**: OpenRouter + `anthropic/claude-sonnet-5`
   через общий `OPENROUTER_MODEL` (в workflow есть явный fallback на Sonnet 5).
