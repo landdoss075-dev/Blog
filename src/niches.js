@@ -1,0 +1,128 @@
+/**
+ * Реестр ниш — «книга рецептов». Каждая ниша описывает СВОЙ контент и площадки;
+ * движок (news/prompt/site/telegram) общий и берёт нишу как параметр.
+ *
+ * Добавить новую нишу = дописать запись сюда (+ завести её домен/каналы вручную).
+ *
+ * Поля ниши:
+ *   key           — идентификатор для --niche и путей
+ *   dir           — папка контента (сайт+RSS+хранилище статей)
+ *   persona       — «кто автор»: первая строка системного промпта (голос статьи)
+ *   site          — { title, description, url, author }
+ *                     author: { name, bio } — для E-E-A-T (страница автора + подпись)
+ *   telegram      — { channelEnv, urlEnv } — имена ENV-переменных с токеном канала/ссылкой
+ *   newsQueries   — поисковые запросы Google News для этой темы
+ *   sensitiveFilter — отсекать ли политику/трагедии (для ИИ да; для дачи не нужно)
+ *   atmoapp       — публиковать ли на atmoapp.ru (особый таргет — только у ниши ai)
+ */
+
+export const niches = {
+  // ── Ниша №1: «Нейробудни» (существующая, поведение НЕ меняется) ──────────────
+  ai: {
+    key: 'ai',
+    dir: 'docs', // как было — обратная совместимость с текущим сайтом/RSS
+    persona:
+      'Ты — опытный автор русскоязычного блога про ИИ-инструменты и нейросети.',
+    topicLabel: 'про ИИ-инструменты', // подставляется в конец промпта
+    site: {
+      title: 'Нейробудни',
+      description:
+        'Нейросети и ИИ-инструменты для обычной жизни и работы. Практичные разборы, готовые промпты, реальные кейсы — то, что можно применить сразу. Новое каждый день.',
+      // url/author берутся из ENV (SITE_URL/SITE_AUTHOR), чтобы не хардкодить прод.
+      urlEnv: 'SITE_URL',
+      author: { name: 'Редакция', bio: '' },
+    },
+    telegram: { botTokenEnv: 'TELEGRAM_BOT_TOKEN', channelEnv: 'TELEGRAM_CHANNEL_ID', urlEnv: 'TELEGRAM_CHANNEL_URL' },
+    channelName: 'Нейробудни', // имя в CTA-ссылке статьи
+    newsQueries: [
+      'искусственный интеллект новости',
+      'нейросети инструменты 2026',
+      'ChatGPT Midjourney обновление',
+      'новые ИИ сервисы и приложения',
+      'нейросети для творчества и работы',
+      'ИИ для бизнеса и продуктивности',
+    ],
+    sensitiveFilter: true,
+    topTechFeed: true, // топ техно-лента Google News — в тему только для ИИ
+    atmoapp: true,
+  },
+
+  // ── Ниша №2: «Дачные будни» (пилот мульти-нишевого движка) ───────────────────
+  dacha: {
+    key: 'dacha',
+    dir: 'channels/dacha/docs',
+    persona:
+      'Ты — Тамара Гречко, садовод-практик с 30-летним стажем, ведёшь участок в Подмосковье. ' +
+      'Пишешь тепло и по-человечески, от первого лица, делишься тем, что проверила своими руками ' +
+      'на грядках — без агрономических премудростей и канцелярита.',
+    topicLabel: 'про дачу, сад и огород',
+    site: {
+      title: 'Дачные будни',
+      description:
+        'Дача, сад и огород без премудростей. Проверенные на своих грядках советы, сезонные хлопоты, ' +
+        'истории с участка — то, что реально работает. Тамара Гречко, 30 лет на земле.',
+      urlEnv: 'DACHA_SITE_URL', // https://dachnye-budni.ru
+      author: {
+        name: 'Тамара Гречко',
+        bio:
+          'Садовод-практик с 30-летним стажем. Веду участок в Подмосковье: от рассады на подоконнике ' +
+          'до зимних заготовок. Пишу о даче только то, что проверила своими руками. Верю, что хороший ' +
+          'урожай начинается не с удобрений, а с наблюдательности.',
+      },
+    },
+    telegram: { botTokenEnv: 'DACHA_TELEGRAM_BOT_TOKEN', channelEnv: 'DACHA_TELEGRAM_CHANNEL_ID', urlEnv: 'DACHA_TELEGRAM_CHANNEL_URL' },
+    channelName: 'Дачные будни',
+    newsQueries: [
+      'сад огород советы сезон',
+      'дача выращивание урожай',
+      'посадка рассада уход растения',
+      'сад огород новости',
+      'заготовки на зиму дача',
+      'болезни вредители растений сад',
+    ],
+    sensitiveFilter: false, // дачной теме фильтр политики/трагедий не нужен
+    atmoapp: false,
+  },
+};
+
+/** Возвращает нишу по ключу (по умолчанию 'ai' — обратная совместимость). */
+export function getNiche(key) {
+  const k = key || 'ai';
+  const niche = niches[k];
+  if (!niche) {
+    throw new Error(`Неизвестная ниша "${k}". Доступны: ${Object.keys(niches).join(', ')}.`);
+  }
+  return niche;
+}
+
+/**
+ * Резолвит нишевый site-объект (url/telegram-каналы читаются из ENV по именам из ниши),
+ * чтобы прод-значения не хардкодить в реестре. Возвращает готовые title/description/url/author.
+ */
+export function resolveSite(niche) {
+  const s = niche.site;
+  return {
+    title: s.title,
+    description: s.description,
+    url: (process.env[s.urlEnv] || '').replace(/\/+$/, ''),
+    author: s.author,
+    dir: niche.dir,
+    maxPosts: Number(process.env.SITE_MAX_POSTS || 50),
+  };
+}
+
+/** Резолвит telegram-таргет ниши из ENV: свой бот, свой канал, ссылка для CTA. */
+export function resolveTelegram(niche) {
+  return {
+    botToken: process.env[niche.telegram.botTokenEnv] || '',
+    channelId: process.env[niche.telegram.channelEnv] || '',
+    channelUrl: process.env[niche.telegram.urlEnv] || '',
+  };
+}
+
+/** Разбирает --niche=<key> из argv (или из NICHE в окружении). По умолчанию 'ai'. */
+export function nicheFromArgs() {
+  const arg = process.argv.find((a) => a.startsWith('--niche='));
+  if (arg) return arg.split('=')[1];
+  return process.env.NICHE || 'ai';
+}

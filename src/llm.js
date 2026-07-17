@@ -43,7 +43,7 @@ export async function generateArticle(topic) {
     let candidate;
     try {
       const raw = await provider.call(buildMessages(topic));
-      candidate = parseArticle(raw);
+      candidate = parseArticle(raw, topic.cta);
     } catch (err) {
       lastError = err;
       log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — перегенерирую…`);

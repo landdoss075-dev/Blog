@@ -1,7 +1,6 @@
-import { config } from './config.js';
 import { log } from './log.js';
 
-const API = (method) => `https://api.telegram.org/bot${config.telegram.botToken}/${method}`;
+const API = (botToken, method) => `https://api.telegram.org/bot${botToken}/${method}`;
 
 /** Rich-сообщение вмещает до 32768 символов (Bot API 10.1). */
 const RICH_LIMIT = 32768;
@@ -26,8 +25,8 @@ function buildRichHtml(article, withCover) {
 }
 
 /** Вызов метода Bot API. Возвращает result или бросает с описанием. */
-async function tgCall(method, payload) {
-  const res = await fetch(API(method), {
+async function tgCall(botToken, method, payload) {
+  const res = await fetch(API(botToken, method), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -43,14 +42,15 @@ async function tgCall(method, payload) {
  * (Telegram сам скачивает по HTTP-ссылке — file_id не нужен).
  * Если Rich-сообщение недоступно/упало — фолбэк на прежний путь (фото + обычный текст).
  *
- * Если токен/канал не заданы — мягко пропускает (возвращает skipped).
+ * `tg` — таргет ниши: { botToken, channelId }. Если не заданы — мягко пропускает.
  */
-export async function postToTelegram(article, image) {
-  if (!config.telegram.botToken || !config.telegram.channelId) {
-    log.warn('TELEGRAM_BOT_TOKEN/CHANNEL_ID не заданы — пропускаю Telegram.');
+export async function postToTelegram(article, image, tg) {
+  if (!tg?.botToken || !tg?.channelId) {
+    log.warn('Токен бота / id канала ниши не заданы — пропускаю Telegram.');
     return { skipped: true };
   }
-  const chat_id = config.telegram.channelId;
+  const call = (method, payload) => tgCall(tg.botToken, method, payload);
+  const chat_id = tg.channelId;
   const hasImage = Boolean(image?.url);
 
   // Один Rich-пост: обложка (media[] по URL) + оформленная статья. При ошибке
@@ -61,12 +61,12 @@ export async function postToTelegram(article, image) {
   }
 
   try {
-    const r = await tgCall('sendRichMessage', { chat_id, rich_message });
+    const r = await call('sendRichMessage', { chat_id, rich_message });
     log.ok(`Опубликовано в Telegram (Rich ${r?.message_id}${hasImage ? ' с обложкой' : ''})`);
     return { skipped: false, messageId: r?.message_id, rich: true };
   } catch (err) {
     log.warn(`sendRichMessage недоступен (${err.message}) — фолбэк на фото + обычный текст.`);
-    return postFallback(chat_id, article, image);
+    return postFallback(call, chat_id, article, image);
   }
 }
 
@@ -75,7 +75,7 @@ export async function postToTelegram(article, image) {
  * тело статьи HTML-текстом, разбитое по лимиту Telegram (4096 симв.).
  * Telegram HTML не знает h2/ul/li — переводим заголовки в <b>, пункты в строки с «•».
  */
-async function postFallback(chat_id, article, image) {
+async function postFallback(call, chat_id, article, image) {
   const MSG_LIMIT = 4096;
   const tags = article.tags.map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
   let body = `<b>${escapeHtml(article.title)}</b>\n\n` + article.html
@@ -93,7 +93,7 @@ async function postFallback(chat_id, article, image) {
   let coverMsgId;
   if (image?.url) {
     try {
-      const r = await tgCall('sendPhoto', { chat_id, photo: image.url });
+      const r = await call('sendPhoto', { chat_id, photo: image.url });
       coverMsgId = r?.message_id;
     } catch (err) {
       log.warn(`Обложка (фолбэк) не отправилась (${err.message}) — публикую текст без картинки.`);
@@ -102,7 +102,7 @@ async function postFallback(chat_id, article, image) {
   try {
     let lastId = coverMsgId;
     for (let i = 0; i < body.length; i += MSG_LIMIT) {
-      const r = await tgCall('sendMessage', { chat_id, text: body.slice(i, i + MSG_LIMIT), parse_mode: 'HTML' });
+      const r = await call('sendMessage', { chat_id, text: body.slice(i, i + MSG_LIMIT), parse_mode: 'HTML' });
       lastId = r?.message_id;
     }
     log.ok(`Опубликовано в Telegram (фолбэк: ${coverMsgId ? 'обложка + ' : ''}текст)`);

@@ -2,6 +2,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { config, assertRequired } from '../src/config.js';
 import { log } from '../src/log.js';
+import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
 import { generateArticle } from '../src/llm.js';
 import { fetchImages } from '../src/unsplash.js';
@@ -17,12 +18,21 @@ import { postToAtmoapp } from '../src/atmoapp.js';
  * Запуск:  node scripts/generate_and_post.js [--dry-run]
  */
 async function main() {
-  log.step(`AI Blog Autoposter${config.dryRun ? ' — DRY RUN (без публикации)' : ''}`);
+  // Ниша: --niche=<key> (или NICHE), по умолчанию 'ai' (Нейробудни).
+  const niche = getNiche(nicheFromArgs());
+  const site = resolveSite(niche);
+  const tgTarget = resolveTelegram(niche);
+
+  log.step(`AI Blog Autoposter [${niche.key}]${config.dryRun ? ' — DRY RUN (без публикации)' : ''}`);
   assertRequired();
 
-  // 1. Тема дня
+  // 1. Тема дня (запросы/фильтр — из ниши)
   log.step('1/5 Поиск темы (Google News RSS)');
-  const topic = await fetchTopic();
+  const topic = await fetchTopic(niche);
+  // Прокидываем в topic всё нишевое, что нужно генерации: голос автора, «про что», CTA.
+  topic.persona = niche.persona;
+  topic.topicLabel = niche.topicLabel;
+  topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
 
   // 2. Генерация статьи
   log.step(`2/5 Генерация статьи (${config.provider})`);
@@ -36,25 +46,28 @@ async function main() {
 
   // Dry-run: сохраняем результат в out/ и выходим
   if (config.dryRun) {
-    await saveDryRun({ topic, article, image, inlineImages });
+    await saveDryRun({ topic, article, image, inlineImages }, niche);
     log.ok('DRY RUN завершён — ничего не опубликовано.');
     return;
   }
 
-  // 4. Telegram (обложка + текст)
+  // 4. Telegram (обложка + текст) — свой бот/канал ниши
   log.step('4/6 Публикация в Telegram');
-  const tg = await safe('Telegram', () => postToTelegram(article, image));
+  const tg = await safe('Telegram', () => postToTelegram(article, image, tgTarget));
 
-  // 5. Сайт + RSS (источник для импорта в Яндекс Дзен)
+  // 5. Сайт + RSS (источник для импорта в Яндекс Дзен) — папка/домен ниши
   log.step('5/6 Обновление сайта/RSS (для Дзена)');
-  const site = await safe('Site', () => publishToSite(article, image, inlineImages));
+  const siteRes = await safe('Site', () => publishToSite(article, image, inlineImages, site));
 
-  // 6. Сайт atmoapp.ru (бэкенд сам берёт 1/день)
-  log.step('6/6 Публикация на atmoapp.ru');
-  const atmoapp = await safe('Atmoapp', () => postToAtmoapp(article, image, inlineImages));
+  // 6. Сайт atmoapp.ru — только для ниши, где он подключён (особый таргет 'ai').
+  let atmoapp = { skipped: true };
+  if (niche.atmoapp) {
+    log.step('6/6 Публикация на atmoapp.ru');
+    atmoapp = await safe('Atmoapp', () => postToAtmoapp(article, image, inlineImages));
+  }
 
   log.step('Итог');
-  summarize({ tg, site, atmoapp });
+  summarize({ tg, site: siteRes, atmoapp });
 }
 
 /** Выполняет публикацию, не роняя весь процесс из-за одной площадки. */
@@ -81,8 +94,9 @@ function summarize({ tg, site, atmoapp }) {
   log.ok('Готово.');
 }
 
-async function saveDryRun(result) {
-  const dir = path.resolve('out');
+async function saveDryRun(result, niche) {
+  // Dry-run кладём в out/ ниши (Нейробудни — корневой out/, остальные — рядом с их папкой).
+  const dir = path.resolve(niche.key === 'ai' ? 'out' : path.join(path.dirname(niche.dir), 'out'));
   await mkdir(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
 

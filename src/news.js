@@ -1,15 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import Parser from 'rss-parser';
-import { config } from './config.js';
 import { log } from './log.js';
 
 const parser = new Parser({ timeout: 15000 });
 
 /** Заголовки недавно опубликованных статей (для защиты от повторов при 3 постах/день). */
-async function loadRecentTitles(limit = 8) {
+async function loadRecentTitles(dir, limit = 8) {
   try {
-    const file = path.resolve(config.site.dir, 'posts.json');
+    const file = path.resolve(dir, 'posts.json');
     const posts = JSON.parse(await readFile(file, 'utf8'));
     return posts.slice(0, limit).map((p) => p.title).filter(Boolean);
   } catch {
@@ -87,13 +86,17 @@ function stem(word) {
 /**
  * Стемы слов из наших же поисковых запросов — они есть в КАЖДОЙ ленте,
  * поэтому это шум, а не тренд. Игнорируем их при скоринге.
+ * Пересобирается под нишу в начале fetchTopic (setQueryStems).
  */
-const QUERY_STEMS = new Set(
-  config.newsQueries
-    .flatMap((q) => q.toLowerCase().replace(/[^a-zа-яё0-9 ]/gi, ' ').split(/\s+/))
-    .filter((w) => w.length >= 4)
-    .map(stem),
-);
+let QUERY_STEMS = new Set();
+function setQueryStems(queries) {
+  QUERY_STEMS = new Set(
+    queries
+      .flatMap((q) => q.toLowerCase().replace(/[^a-zа-яё0-9 ]/gi, ' ').split(/\s+/))
+      .filter((w) => w.length >= 4)
+      .map(stem),
+  );
+}
 
 /** Значимые слова заголовка (для частотного анализа тренда), в виде стемов. */
 function keywords(title) {
@@ -120,10 +123,14 @@ async function fetchFeed(url) {
  *
  * Возвращает: { theme, headline, headlines, trendKeywords }
  */
-export async function fetchTopic() {
-  log.info('Сбор новостей: поисковые запросы + топ техно-лента…');
+export async function fetchTopic(niche) {
+  const newsQueries = niche.newsQueries;
+  setQueryStems(newsQueries); // «шумовые» слова этой ниши — под её запросы
+  log.info(`Сбор новостей [${niche.key}]: поисковые запросы + топ техно-лента…`);
 
-  const urls = [...config.newsQueries.map(searchUrl), TOP_TECH_URL];
+  // Топ техно-лента добавляется только нишам, которым она в тему (ИИ). Для дачи/питомцев
+  // и т.п. она тащит техно-новости мимо темы — берём только целевые поисковые запросы.
+  const urls = niche.topTechFeed ? [...newsQueries.map(searchUrl), TOP_TECH_URL] : newsQueries.map(searchUrl);
   const lists = await Promise.all(urls.map(fetchFeed));
   const items = lists.flat();
 
@@ -135,7 +142,8 @@ export async function fetchTopic() {
   for (const it of items) {
     const title = cleanTitle(it.title);
     if (!title) continue;
-    if (isSensitive(title)) { droppedSensitive++; continue; } // безопасно для монетизации Дзена
+    // Фильтр политики/трагедий — только для ниш, где он нужен (для дачи и т.п. — нет).
+    if (niche.sensitiveFilter && isSensitive(title)) { droppedSensitive++; continue; }
     const key = normalize(title);
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -146,7 +154,7 @@ export async function fetchTopic() {
 
   if (all.length === 0) {
     log.warn('Новостей не получено — использую запасную тему.');
-    const theme = config.newsQueries[0];
+    const theme = newsQueries[0];
     return { theme, headline: theme, headlines: [theme], trendKeywords: [] };
   }
 
@@ -191,7 +199,7 @@ export async function fetchTopic() {
   // Защита от повторов (важно при 3 постах/день и затяжных «флуд-историях» на несколько дней).
   // Дубль = заголовок делит ≥2 значимых слова (или ≥30% по Жаккару) с любой из недавних статей.
   // Этого достаточно, чтобы поймать разные формулировки одной и той же истории.
-  const recentTitles = await loadRecentTitles(12);
+  const recentTitles = await loadRecentTitles(niche.dir, 12);
   const recentKwSets = recentTitles.map((t) => new Set(keywords(t)));
   const isRecentDuplicate = (title) => {
     const kw = keywords(title);
@@ -217,7 +225,7 @@ export async function fetchTopic() {
 
   // Тема — по словам ВЫБРАННОГО заголовка (а не глобальных трендов), чтобы не путать промпт.
   const topWords = [...new Set(keywords(top.title).map((s) => display.get(s)?.word || s))];
-  const theme = topWords.slice(0, 4).join(', ') || trendKeywords.slice(0, 3).join(', ') || config.newsQueries[0];
+  const theme = topWords.slice(0, 4).join(', ') || trendKeywords.slice(0, 3).join(', ') || newsQueries[0];
 
   // Контекст для промпта — заголовки из ТОГО ЖЕ кластера, что и выбранный (а не флуд-история).
   const topKw = new Set(keywords(top.title));

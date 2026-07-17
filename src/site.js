@@ -1,6 +1,5 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { config } from './config.js';
 import { log } from './log.js';
 import { toPlainText } from './sanitize.js';
 
@@ -67,11 +66,9 @@ export function insertInlineImages(html, images = []) {
   return parts.join('</p>');
 }
 
-const postsFile = () => path.resolve(config.site.dir, 'posts.json');
-
-async function loadPosts() {
+async function loadPosts(dir) {
   try {
-    return JSON.parse(await readFile(postsFile(), 'utf8'));
+    return JSON.parse(await readFile(path.resolve(dir, 'posts.json'), 'utf8'));
   } catch {
     return [];
   }
@@ -79,19 +76,20 @@ async function loadPosts() {
 
 /**
  * Добавляет статью на сайт: создаёт страницу, обновляет хранилище,
- * перестраивает index.html и rss.xml. Возвращает URL статьи.
+ * перестраивает index.html, rss.xml, sitemap.xml, robots.txt, страницу автора.
+ * `site` — резолвленный объект ниши: { title, description, url, author, dir, maxPosts }.
  *
- * Если SITE_URL не задан — мягко пропускает (как и другие площадки).
+ * Если site.url не задан — мягко пропускает (как и другие площадки).
  */
-export async function publishToSite(article, image, inlineImages = []) {
-  if (!config.site.url) {
-    log.warn('SITE_URL не задан — пропускаю генерацию сайта/RSS для Дзена.');
+export async function publishToSite(article, image, inlineImages = [], site) {
+  if (!site?.url) {
+    log.warn('URL сайта ниши не задан — пропускаю генерацию сайта/RSS для Дзена.');
     return { skipped: true };
   }
 
   const date = new Date().toISOString();
   const slug = slugify(article.title, date);
-  const url = `${config.site.url}/posts/${slug}.html`;
+  const url = `${site.url}/posts/${slug}.html`;
 
   const post = {
     slug,
@@ -105,17 +103,20 @@ export async function publishToSite(article, image, inlineImages = []) {
   };
 
   // Обновляем хранилище: новая статья сверху, без дублей по slug, обрезаем до maxPosts.
-  let posts = await loadPosts();
+  let posts = await loadPosts(site.dir);
   posts = posts.filter((p) => p.slug !== slug);
   posts.unshift(post);
-  posts = posts.slice(0, config.site.maxPosts);
+  posts = posts.slice(0, site.maxPosts);
 
-  const dir = path.resolve(config.site.dir);
+  const dir = path.resolve(site.dir);
   await mkdir(path.join(dir, 'posts'), { recursive: true });
-  await writeFile(postsFile(), JSON.stringify(posts, null, 2), 'utf8');
-  await writeFile(path.join(dir, 'posts', `${slug}.html`), renderPostPage(post), 'utf8');
-  await writeFile(path.join(dir, 'index.html'), renderIndex(posts), 'utf8');
-  await writeFile(path.join(dir, 'rss.xml'), renderRss(posts), 'utf8');
+  await writeFile(path.join(dir, 'posts.json'), JSON.stringify(posts, null, 2), 'utf8');
+  await writeFile(path.join(dir, 'posts', `${slug}.html`), renderPostPage(post, site), 'utf8');
+  await writeFile(path.join(dir, 'index.html'), renderIndex(posts, site), 'utf8');
+  await writeFile(path.join(dir, 'rss.xml'), renderRss(posts, site), 'utf8');
+  await writeFile(path.join(dir, 'sitemap.xml'), renderSitemap(posts, site), 'utf8');
+  await writeFile(path.join(dir, 'robots.txt'), renderRobots(site), 'utf8');
+  await writeFile(path.join(dir, 'about.html'), renderAbout(site), 'utf8');
   // .nojekyll — чтобы GitHub Pages не пытался обрабатывать сайт через Jekyll.
   await writeFile(path.join(dir, '.nojekyll'), '', 'utf8');
 
@@ -126,7 +127,43 @@ export async function publishToSite(article, image, inlineImages = []) {
 const PAGE_CSS =
   'max-width:720px;margin:0 auto;padding:24px 16px;font:18px/1.7 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a';
 
-function renderPostPage(post) {
+function ruDate(d) {
+  return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/** Имя автора (author в нише — объект {name,bio} или строка). */
+function authorName(site) {
+  return typeof site.author === 'object' ? site.author.name : site.author || 'Редакция';
+}
+
+/** Блок автора под статьёй (E-E-A-T: имя + био со ссылкой на страницу автора). */
+function authorBlock(site) {
+  const name = authorName(site);
+  const bio = typeof site.author === 'object' ? site.author.bio : '';
+  if (!name) return '';
+  return `<div style="margin:32px 0 8px;padding:16px;border-top:1px solid #eee;color:#444;font-size:15px">
+  <b>${xmlEscape(name)}</b>${bio ? ` — ${xmlEscape(bio)}` : ''}
+  <br><a href="../about.html" style="color:#0a66c2;text-decoration:none">Об авторе →</a>
+</div>`;
+}
+
+/** Schema.org Article (JSON-LD) — поисковик видит тип, автора, дату. */
+function articleJsonLd(post, site) {
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.title,
+    description: post.excerpt,
+    datePublished: post.date,
+    author: { '@type': 'Person', name: authorName(site) },
+    publisher: { '@type': 'Organization', name: site.title },
+    ...(post.image ? { image: post.image.url } : {}),
+    mainEntityOfPage: post.url,
+  };
+  return `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+}
+
+function renderPostPage(post, site) {
   const img = post.image
     ? `<img src="${xmlEscape(post.image.url)}" alt="" style="width:100%;border-radius:12px;margin:16px 0">`
     : '';
@@ -140,29 +177,32 @@ function renderPostPage(post) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${xmlEscape(post.title)}</title>
 <meta name="description" content="${xmlEscape(post.excerpt)}">
+<link rel="canonical" href="${xmlEscape(post.url)}">
 <meta property="og:type" content="article">
 <meta property="og:title" content="${xmlEscape(post.title)}">
 <meta property="og:description" content="${xmlEscape(post.excerpt)}">
 ${post.image ? `<meta property="og:image" content="${xmlEscape(post.image.url)}">` : ''}
 <link rel="alternate" type="application/rss+xml" href="../rss.xml">
+${articleJsonLd(post, site)}
 </head>
 <body style="${PAGE_CSS}">
 <p><a href="../index.html" style="color:#0a66c2;text-decoration:none">← Все статьи</a></p>
 <h1>${xmlEscape(post.title)}</h1>
-<p style="color:#888;font-size:15px">${new Date(post.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+<p style="color:#888;font-size:15px">${authorName(site)} · ${ruDate(post.date)}</p>
 ${img}
 ${post.html}
 ${tags}
+${authorBlock(site)}
 </body>
 </html>`;
 }
 
-function renderIndex(posts) {
+function renderIndex(posts, site) {
   const items = posts
     .map(
       (p) => `<article style="border-bottom:1px solid #eee;padding:18px 0">
   <h2 style="margin:0 0 6px"><a href="posts/${p.slug}.html" style="color:#1a1a1a;text-decoration:none">${xmlEscape(p.title)}</a></h2>
-  <p style="color:#888;font-size:14px;margin:0 0 8px">${new Date(p.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  <p style="color:#888;font-size:14px;margin:0 0 8px">${ruDate(p.date)}</p>
   <p style="margin:0;color:#444">${xmlEscape(p.excerpt)}…</p>
 </article>`,
     )
@@ -172,20 +212,63 @@ function renderIndex(posts) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${xmlEscape(config.site.title)}</title>
-<meta name="description" content="${xmlEscape(config.site.description)}">
+<title>${xmlEscape(site.title)}</title>
+<meta name="description" content="${xmlEscape(site.description)}">
+<link rel="canonical" href="${xmlEscape(site.url)}/">
 <link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml">
 </head>
 <body style="${PAGE_CSS}">
-<h1>${xmlEscape(config.site.title)}</h1>
-<p style="color:#666">${xmlEscape(config.site.description)}</p>
+<h1>${xmlEscape(site.title)}</h1>
+<p style="color:#666">${xmlEscape(site.description)}</p>
+<p style="font-size:15px"><a href="about.html" style="color:#0a66c2;text-decoration:none">Об авторе</a></p>
 ${items || '<p>Скоро здесь появятся статьи.</p>'}
 </body>
 </html>`;
 }
 
+/** Страница «Об авторе» — ключевой E-E-A-T сигнал (без неё материал не получает экспертный кредит). */
+function renderAbout(site) {
+  const name = authorName(site);
+  const bio = typeof site.author === 'object' ? site.author.bio : '';
+  return `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Об авторе — ${xmlEscape(site.title)}</title>
+<meta name="description" content="${xmlEscape(name)}: ${xmlEscape(bio).slice(0, 150)}">
+<link rel="canonical" href="${xmlEscape(site.url)}/about.html">
+</head>
+<body style="${PAGE_CSS}">
+<p><a href="index.html" style="color:#0a66c2;text-decoration:none">← Все статьи</a></p>
+<h1>Об авторе</h1>
+<h2 style="margin-bottom:4px">${xmlEscape(name)}</h2>
+<p style="color:#444">${xmlEscape(bio)}</p>
+<p style="color:#666;font-size:15px">${xmlEscape(site.description)}</p>
+</body>
+</html>`;
+}
+
+/** sitemap.xml — главная, страница автора, все статьи. */
+function renderSitemap(posts, site) {
+  const urls = [
+    `${site.url}/`,
+    `${site.url}/about.html`,
+    ...posts.map((p) => p.url),
+  ];
+  const body = urls.map((u) => `  <url><loc>${xmlEscape(u)}</loc></url>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${body}
+</urlset>`;
+}
+
+function renderRobots(site) {
+  return `User-agent: *\nAllow: /\nSitemap: ${site.url}/sitemap.xml\n`;
+}
+
 /** RSS-лента по требованиям Яндекс Дзена (namespace yandex/media, content:encoded, enclosure). */
-function renderRss(posts) {
+function renderRss(posts, site) {
   const items = posts
     .map((p) => {
       const enclosure = p.image
@@ -208,9 +291,9 @@ function renderRss(posts) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:yandex="http://news.yandex.ru" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>${xmlEscape(config.site.title)}</title>
-    <link>${xmlEscape(config.site.url)}</link>
-    <description>${xmlEscape(config.site.description)}</description>
+    <title>${xmlEscape(site.title)}</title>
+    <link>${xmlEscape(site.url)}</link>
+    <description>${xmlEscape(site.description)}</description>
     <language>ru</language>
 ${items}
   </channel>
