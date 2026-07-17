@@ -4,6 +4,33 @@
 
 ---
 
+## [2026-07-17] — Автопостинг «Дачных будней» в Telegram + сайт
+
+### Сделано
+- Добавлен отдельный workflow `.github/workflows/daily_dacha_post.yml` для ниши `dacha`.
+- Расписание: 1 раз в день, 08:00 UTC / 11:00 МСК; также есть ручной `workflow_dispatch` с `dry_run`.
+- Генерация запускается как `node scripts/generate_and_post.js --niche=dacha`.
+- Модель генерации — **та же, что у «Нейробудней»**: OpenRouter + `anthropic/claude-sonnet-5`
+  через общий `OPENROUTER_MODEL` (в workflow есть явный fallback на Sonnet 5).
+- Telegram-таргет берётся из `DACHA_TELEGRAM_BOT_TOKEN`, `DACHA_TELEGRAM_CHANNEL_ID`,
+  `DACHA_TELEGRAM_CHANNEL_URL`; канал: `@dachniye_budni`.
+- Сайт/RSS пишутся в отдельный контент-репозиторий `landdoss075-dev/dachnye-budni`, который
+  раздаётся через GitHub Pages на `https://dachnye-budni.ru`.
+
+### Инфра
+- Для пуша в `landdoss075-dev/dachnye-budni` создан ограниченный write deploy key:
+  публичная часть добавлена в deploy keys контент-репозитория, приватная часть сохранена в
+  secret основного репозитория `DACHNYE_BUDNI_DEPLOY_KEY`.
+- Не используется личный `gh`-токен как постоянный Actions secret: он слишком широкий.
+- Старый случайно выведенный тестовый deploy key был сразу удалён из GitHub и локально;
+  актуален только ключ `blog-dacha-actions-write-v2`.
+
+### Осталось проверить
+- Первый ручной/плановый запуск workflow должен подтвердить e2e: Sonnet 5 → Unsplash →
+  один Rich-пост в Telegram «Дачные будни» → commit/push сайта/RSS в `dachnye-budni`.
+
+---
+
 ## [2026-05-25] — Старт проекта, планирование
 
 ### Решено (Decisions)
