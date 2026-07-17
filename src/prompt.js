@@ -14,7 +14,7 @@ const DEFAULT_PERSONA = 'Ты — опытный автор русскоязыч
 export function buildSystemPrompt(persona = DEFAULT_PERSONA) {
   return `${persona}
 Пишешь живым, человеческим языком: без канцелярита, без воды, без шаблонных фраз вроде
-"в современном мире" и "не секрет, что". Используешь конкретные примеры, кейсы и цифры.
+"в современном мире" и "не секрет, что". Используешь конкретные примеры, ситуации и цифры.
 
 Жёсткие требования:
 - Объём основного текста: 700-1100 слов.
@@ -70,9 +70,22 @@ const TITLE_STYLES = [
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 /** Пользовательский промпт из темы дня. `topicLabel` — «про что» блог (для нейтральности к нише). */
-export function buildUserPrompt({ theme, headline, headlines, trendKeywords = [], recentTitles = [], topicLabel = 'про ИИ-инструменты' }) {
-  const format = pick(FORMATS);
-  const titleStyle = pick(TITLE_STYLES);
+export function buildUserPrompt({
+  theme,
+  headline,
+  headlines,
+  trendKeywords = [],
+  recentTitles = [],
+  topicLabel = 'про ИИ-инструменты',
+  promptFormats = FORMATS,
+  titleStyles = TITLE_STYLES,
+  promptGuidance = [],
+}) {
+  const format = pick(promptFormats.length ? promptFormats : FORMATS);
+  const titleStyle = pick(titleStyles.length ? titleStyles : TITLE_STYLES);
+  const guidance = promptGuidance.length
+    ? `\nНИШЕВЫЕ ПРАВИЛА:\n${promptGuidance.map((rule) => `- ${rule}`).join('\n')}\n`
+    : '';
   return `Горячая тема дня: «${theme}».
 Самый популярный новостной повод (зацепка для статьи):
 "${headline}"
@@ -83,10 +96,11 @@ ${trendKeywords.length ? `\nКлючевые тренды дня: ${trendKeyword
 
 ФОРМАТ ПОДАЧИ для этой статьи (используй именно его, не сваливайся в общий шаблон):
 → ${format}
+${guidance}
 
 ФОРМАТ — «польза на поводе», НЕ пересказ новости:
 - Используй этот горячий повод как зацепку в первом абзаце (чтобы кликали), но НЕ начинай со слова «Зацепка».
-- Дальше дай ПРАКТИЧЕСКУЮ ценность: конкретные советы, кейсы, примеры —
+- Дальше дай ПРАКТИЧЕСКУЮ ценность: конкретные советы, личный опыт, примеры —
   то, ради чего статью дочитают до конца.
 - Не пересказывай новость дословно и не копируй факты, в которых не уверен.
 - Цель — максимум дочитываний и времени чтения: читатель должен унести из текста реальную пользу.
@@ -196,12 +210,24 @@ export function parseArticle(raw, cta = {}) {
  * Ловит осечки, когда модель игнорирует формат: 1 заголовок и/или куцый текст
  * (старый шаблон ~180 слов). Возвращает причину провала или null, если ок.
  */
-export function qualityIssue(article) {
+function containsForbiddenTerm(text, terms = []) {
+  const normalized = toPlainText(text).toLowerCase();
+  return terms.find((term) => normalized.includes(String(term).toLowerCase()));
+}
+
+export function qualityIssue(article, { forbiddenTerms = [] } = {}) {
   if (!article.titleVariants || article.titleVariants.length < 2) {
     return `мало вариантов заголовка (${article.titleVariants?.length || 0}, нужно ≥2)`;
   }
   if ((article.bodyWords || 0) < 400) {
     return `тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥400)`;
+  }
+  const forbidden = containsForbiddenTerm(
+    [article.title, article.html, article.telegram, ...(article.tags || [])].join(' '),
+    forbiddenTerms,
+  );
+  if (forbidden) {
+    return `найдено стоп-слово другой ниши: "${forbidden}"`;
   }
   return null;
 }

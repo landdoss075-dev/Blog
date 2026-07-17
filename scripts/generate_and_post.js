@@ -32,6 +32,10 @@ async function main() {
   // Прокидываем в topic всё нишевое, что нужно генерации: голос автора, «про что», CTA.
   topic.persona = niche.persona;
   topic.topicLabel = niche.topicLabel;
+  topic.promptFormats = niche.promptFormats || [];
+  topic.titleStyles = niche.titleStyles || [];
+  topic.promptGuidance = niche.promptGuidance || [];
+  topic.forbiddenTerms = niche.forbiddenTerms || [];
   topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
 
   // 2. Генерация статьи

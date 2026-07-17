@@ -126,7 +126,8 @@ async function fetchFeed(url) {
 export async function fetchTopic(niche) {
   const newsQueries = niche.newsQueries;
   setQueryStems(newsQueries); // «шумовые» слова этой ниши — под её запросы
-  log.info(`Сбор новостей [${niche.key}]: поисковые запросы + топ техно-лента…`);
+  const sourceLabel = niche.topTechFeed ? 'поисковые запросы + топ техно-лента' : 'нишевые поисковые запросы';
+  log.info(`Сбор новостей [${niche.key}]: ${sourceLabel}…`);
 
   // Топ техно-лента добавляется только нишам, которым она в тему (ИИ). Для дачи/питомцев
   // и т.п. она тащит техно-новости мимо темы — берём только целевые поисковые запросы.

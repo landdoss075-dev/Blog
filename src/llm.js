@@ -49,7 +49,7 @@ export async function generateArticle(topic) {
       log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — перегенерирую…`);
       continue;
     }
-    const issue = qualityIssue(candidate);
+    const issue = qualityIssue(candidate, topic);
     if (!issue) {
       article = candidate;
       break;
