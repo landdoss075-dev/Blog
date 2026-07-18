@@ -41,30 +41,45 @@ export async function fetchImage(query) {
  * Получает несколько фото за один запрос (обложка + иллюстрации в текст).
  * Возвращает массив (может быть короче count или пустым). Первый элемент — обложка.
  */
-export async function fetchImages(query, count = 3) {
+export async function fetchImages(query, count = 3, fallbackQueries = []) {
   if (!config.unsplash.accessKey) {
     log.warn('UNSPLASH_ACCESS_KEY не задан — публикую без картинок.');
     return [];
   }
 
   const n = Math.max(1, Math.min(count, 10));
-  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high&count=${n}`;
-
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Client-ID ${config.unsplash.accessKey}` },
-    });
-    if (!res.ok) throw new Error(`Unsplash ${res.status}`);
-    const data = await res.json();
-    const list = (Array.isArray(data) ? data : [])
-      .map((d) => ({ url: d.urls?.regular, author: d.user?.name, authorUrl: d.user?.links?.html }))
-      .filter((x) => x.url);
-    if (list.length === 0) throw new Error('пустой ответ');
-
-    log.ok(`Картинок с Unsplash: ${list.length} (обложка + ${list.length - 1} в текст)`);
-    return list;
-  } catch (err) {
-    log.warn(`Не удалось получить фото с Unsplash (${err.message}) — публикую без картинок.`);
+  const queries = [...new Set([query, ...fallbackQueries].map((q) => String(q || '').trim()).filter(Boolean))];
+  if (!queries.length) {
+    log.warn('Запрос для Unsplash пустой — публикую без картинок.');
     return [];
   }
+
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i];
+    try {
+      const list = await fetchImagesOnce(q, n);
+      log.ok(`Картинок с Unsplash: ${list.length} по запросу "${q}" (обложка + ${list.length - 1} в текст)`);
+      return list;
+    } catch (err) {
+      const more = i < queries.length - 1 ? ' — пробую запасной запрос.' : '';
+      log.warn(`Unsplash не дал фото по запросу "${q}" (${err.message})${more}`);
+    }
+  }
+
+  log.warn('Не удалось получить фото с Unsplash по основному и запасным запросам — публикую без картинок.');
+  return [];
+}
+
+async function fetchImagesOnce(query, count) {
+  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high&count=${count}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Client-ID ${config.unsplash.accessKey}` },
+  });
+  if (!res.ok) throw new Error(`Unsplash ${res.status}`);
+  const data = await res.json();
+  const list = (Array.isArray(data) ? data : [])
+    .map((d) => ({ url: d.urls?.regular, author: d.user?.name, authorUrl: d.user?.links?.html }))
+    .filter((x) => x.url);
+  if (list.length === 0) throw new Error('пустой ответ');
+  return list;
 }

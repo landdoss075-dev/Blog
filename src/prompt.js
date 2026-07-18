@@ -201,7 +201,7 @@ export function parseArticle(raw, cta = {}) {
   // Telegram допускает только <b>/<i>; остальное вычищаем.
   const tg = article.telegram ? sanitizeHtml(article.telegram, ['b', 'i']) : toPlainText(article.html).slice(0, 900);
   article.telegram = tg;
-  article.image_query = article.image_query || 'artificial intelligence';
+  article.image_query = article.image_query || 'article illustration';
   return article;
 }
 

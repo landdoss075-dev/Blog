@@ -16,6 +16,7 @@
  *   titleStyles   — нишевые стили заголовков (если не заданы — общие)
  *   promptGuidance — дополнительные правила, чтобы модель не уезжала из темы ниши
  *   forbiddenTerms — стоп-слова для проверки готовой статьи перед публикацией
+ *   imageFallbackQueries — запасные запросы Unsplash, если запрос модели не дал фото
  *   sensitiveFilter — отсекать ли политику/трагедии (для ИИ да; для дачи не нужно)
  *   atmoapp       — публиковать ли на atmoapp.ru (особый таргет — только у ниши ai)
  */
@@ -122,6 +123,14 @@ export const niches = {
       'продуктивность',
       'бизнес-кейс',
       'компания',
+    ],
+    imageFallbackQueries: [
+      'vegetable garden',
+      'potato harvest',
+      'garden beds',
+      'tomato plants',
+      'summer garden',
+      'gardening tools',
     ],
     sensitiveFilter: false, // дачной теме фильтр политики/трагедий не нужен
     atmoapp: false,

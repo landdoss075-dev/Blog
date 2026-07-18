@@ -44,7 +44,7 @@ async function main() {
 
   // 3. Картинки (обложка + иллюстрации в текст)
   log.step('3/5 Подбор картинок (Unsplash)');
-  const images = await fetchImages(article.image_query, 3);
+  const images = await fetchImages(article.image_query, 3, niche.imageFallbackQueries || []);
   const image = images[0] || null;          // обложка
   const inlineImages = images.slice(1);      // в текст статьи (для сайта/Дзена)
 
