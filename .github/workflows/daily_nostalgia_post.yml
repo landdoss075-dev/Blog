@@ -1,0 +1,76 @@
+name: Daily Nostalgia Post
+
+on:
+  # 3 раза в день: примерно 10:20 / 15:20 / 20:20 МСК.
+  # Публикация: Telegram «Как жили раньше» + сайт/RSS kak-zhili-ranshe.ru.
+  schedule:
+    - cron: '20 7 * * *'
+    - cron: '20 12 * * *'
+    - cron: '20 17 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (сгенерировать без публикации)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nostalgia-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout engine
+        uses: actions/checkout@v4
+
+      - name: Checkout nostalgia site repo
+        uses: actions/checkout@v4
+        with:
+          repository: landdoss075-dev/kak-zhili-ranshe
+          path: channels/nostalgia/docs
+          ssh-key: ${{ secrets.KAK_ZHILI_RANSHE_DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run nostalgia post generator
+        env:
+          PROVIDER: ${{ vars.PROVIDER || 'openrouter' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          KAK_ZHILI_RANSHE_SITE_URL: ${{ vars.KAK_ZHILI_RANSHE_SITE_URL || 'https://kak-zhili-ranshe.ru' }}
+          KAK_ZHILI_RANSHE_TELEGRAM_BOT_TOKEN: ${{ secrets.KAK_ZHILI_RANSHE_TELEGRAM_BOT_TOKEN }}
+          KAK_ZHILI_RANSHE_TELEGRAM_CHANNEL_ID: ${{ vars.KAK_ZHILI_RANSHE_TELEGRAM_CHANNEL_ID || '@kak_zhili_ranshe' }}
+          KAK_ZHILI_RANSHE_TELEGRAM_CHANNEL_URL: ${{ vars.KAK_ZHILI_RANSHE_TELEGRAM_CHANNEL_URL || 'https://t.me/kak_zhili_ranshe' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/generate_and_post.js --niche=nostalgia
+
+      - name: Commit generated nostalgia site
+        if: ${{ !inputs.dry_run }}
+        working-directory: channels/nostalgia/docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "Нет изменений сайта для коммита."
+          else
+            git commit -m "nostalgia: новая статья $(date -u +%Y-%m-%d)"
+            git push
+          fi

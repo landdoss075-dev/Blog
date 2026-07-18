@@ -114,6 +114,15 @@ export async function publishToSite(article, image, inlineImages = [], site) {
   return { skipped: false, url, slug, total: posts.length };
 }
 
+function customDomain(siteUrl = '') {
+  try {
+    const host = new URL(siteUrl).hostname;
+    return host && !host.endsWith('.github.io') ? host : '';
+  } catch {
+    return '';
+  }
+}
+
 /** Пересобирает сайт/RSS из готового массива posts, не меняя даты/slug существующих статей. */
 export async function rebuildSite(posts, site) {
   if (!site?.url) {
@@ -137,6 +146,8 @@ async function writeSiteFiles(posts, site) {
   await writeFile(path.join(dir, 'sitemap.xml'), renderSitemap(posts, site), 'utf8');
   await writeFile(path.join(dir, 'robots.txt'), renderRobots(site), 'utf8');
   await writeFile(path.join(dir, 'about.html'), renderAbout(site), 'utf8');
+  const cname = customDomain(site.url);
+  if (cname) await writeFile(path.join(dir, 'CNAME'), `${cname}\n`, 'utf8');
   // .nojekyll — чтобы GitHub Pages не пытался обрабатывать сайт через Jekyll.
   await writeFile(path.join(dir, '.nojekyll'), '', 'utf8');
 }

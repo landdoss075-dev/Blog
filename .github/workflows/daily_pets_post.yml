@@ -1,0 +1,76 @@
+name: Daily Pets Post
+
+on:
+  # 3 раза в день: примерно 10:15 / 15:15 / 20:15 МСК.
+  # Публикация: Telegram «Питомцы в будни» + сайт/RSS pitomcy-budni.ru.
+  schedule:
+    - cron: '15 7 * * *'
+    - cron: '15 12 * * *'
+    - cron: '15 17 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (сгенерировать без публикации)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pets-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout engine
+        uses: actions/checkout@v4
+
+      - name: Checkout pets site repo
+        uses: actions/checkout@v4
+        with:
+          repository: landdoss075-dev/pitomcy-budni
+          path: channels/pets/docs
+          ssh-key: ${{ secrets.PITOMCY_BUDNI_DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run pets post generator
+        env:
+          PROVIDER: ${{ vars.PROVIDER || 'openrouter' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          PITOMCY_BUDNI_SITE_URL: ${{ vars.PITOMCY_BUDNI_SITE_URL || 'https://pitomcy-budni.ru' }}
+          PITOMCY_BUDNI_TELEGRAM_BOT_TOKEN: ${{ secrets.PITOMCY_BUDNI_TELEGRAM_BOT_TOKEN }}
+          PITOMCY_BUDNI_TELEGRAM_CHANNEL_ID: ${{ vars.PITOMCY_BUDNI_TELEGRAM_CHANNEL_ID || '@pitomcy_budni' }}
+          PITOMCY_BUDNI_TELEGRAM_CHANNEL_URL: ${{ vars.PITOMCY_BUDNI_TELEGRAM_CHANNEL_URL || 'https://t.me/pitomcy_budni' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/generate_and_post.js --niche=pets
+
+      - name: Commit generated pets site
+        if: ${{ !inputs.dry_run }}
+        working-directory: channels/pets/docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "Нет изменений сайта для коммита."
+          else
+            git commit -m "pets: новая статья $(date -u +%Y-%m-%d)"
+            git push
+          fi
