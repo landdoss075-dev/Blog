@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { log } from './log.js';
-import { buildMessages, parseArticle, qualityIssue } from './prompt.js';
+import { buildMessages, buildRepairMessages, parseArticle, qualityIssue } from './prompt.js';
 import { callGroq } from './groq.js';
 import { callOpenAI } from './openai.js';
 import { callOpenRouter } from './openrouter.js';
@@ -41,13 +41,26 @@ export async function generateArticle(topic) {
   let lastError = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let candidate;
+    let raw = '';
     try {
-      const raw = await provider.call(buildMessages(topic));
+      raw = await provider.call(buildMessages(topic));
       candidate = parseArticle(raw, topic.cta);
     } catch (err) {
-      lastError = err;
-      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — перегенерирую…`);
-      continue;
+      if (!raw) {
+        lastError = err;
+        log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: генерация не удалась (${err.message}) — перегенерирую…`);
+        continue;
+      }
+      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — пробую восстановить JSON…`);
+      try {
+        const repaired = await provider.call(buildRepairMessages(raw, topic));
+        candidate = parseArticle(repaired, topic.cta);
+        log.ok(`Попытка ${attempt}/${MAX_ATTEMPTS}: JSON восстановлен, продолжаю публикацию.`);
+      } catch (repairErr) {
+        lastError = repairErr;
+        log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: восстановить JSON не удалось (${repairErr.message}) — перегенерирую…`);
+        continue;
+      }
     }
     const issue = qualityIssue(candidate, topic);
     if (!issue) {
