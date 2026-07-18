@@ -1,0 +1,81 @@
+name: Repair Dacha Latest Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (подобрать картинки без публикации и коммита)'
+        type: boolean
+        default: false
+      repost_telegram:
+        description: 'Повторно отправить пост в Telegram с обложкой'
+        type: boolean
+        default: true
+      force:
+        description: 'Переподобрать картинки, даже если обложка уже есть'
+        type: boolean
+        default: false
+      image_query:
+        description: 'Запрос Unsplash (пусто = определить автоматически)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dacha-repair-images
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout engine
+        uses: actions/checkout@v4
+
+      - name: Checkout dacha site repo
+        uses: actions/checkout@v4
+        with:
+          repository: landdoss075-dev/dachnye-budni
+          path: channels/dacha/docs
+          ssh-key: ${{ secrets.DACHNYE_BUDNI_DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repair latest dacha post images
+        env:
+          PROVIDER: ${{ vars.PROVIDER || 'openrouter' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          DACHA_SITE_URL: ${{ vars.DACHA_SITE_URL }}
+          DACHA_TELEGRAM_BOT_TOKEN: ${{ secrets.DACHA_TELEGRAM_BOT_TOKEN }}
+          DACHA_TELEGRAM_CHANNEL_ID: ${{ vars.DACHA_TELEGRAM_CHANNEL_ID }}
+          DACHA_TELEGRAM_CHANNEL_URL: ${{ vars.DACHA_TELEGRAM_CHANNEL_URL }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          REPOST_TELEGRAM: ${{ inputs.repost_telegram && '1' || '' }}
+          FORCE_REPAIR: ${{ inputs.force && '1' || '' }}
+          IMAGE_QUERY: ${{ inputs.image_query }}
+        run: node scripts/repair_latest_post_images.js --niche=dacha
+
+      - name: Commit repaired dacha site
+        if: ${{ !inputs.dry_run }}
+        working-directory: channels/dacha/docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "Нет изменений сайта для коммита."
+          else
+            git commit -m "dacha: добавить картинки к последней статье"
+            git push
+          fi

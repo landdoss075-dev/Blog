@@ -108,10 +108,30 @@ export async function publishToSite(article, image, inlineImages = [], site) {
   posts.unshift(post);
   posts = posts.slice(0, site.maxPosts);
 
+  await writeSiteFiles(posts, site);
+
+  log.ok(`Сайт обновлён: ${url} (всего статей в ленте: ${posts.length})`);
+  return { skipped: false, url, slug, total: posts.length };
+}
+
+/** Пересобирает сайт/RSS из готового массива posts, не меняя даты/slug существующих статей. */
+export async function rebuildSite(posts, site) {
+  if (!site?.url) {
+    log.warn('URL сайта ниши не задан — пропускаю пересборку сайта/RSS.');
+    return { skipped: true };
+  }
+  await writeSiteFiles(posts, site);
+  log.ok(`Сайт пересобран: ${site.url} (всего статей в ленте: ${posts.length})`);
+  return { skipped: false, total: posts.length };
+}
+
+async function writeSiteFiles(posts, site) {
   const dir = path.resolve(site.dir);
   await mkdir(path.join(dir, 'posts'), { recursive: true });
   await writeFile(path.join(dir, 'posts.json'), JSON.stringify(posts, null, 2), 'utf8');
-  await writeFile(path.join(dir, 'posts', `${slug}.html`), renderPostPage(post, site), 'utf8');
+  for (const post of posts) {
+    await writeFile(path.join(dir, 'posts', `${post.slug}.html`), renderPostPage(post, site), 'utf8');
+  }
   await writeFile(path.join(dir, 'index.html'), renderIndex(posts, site), 'utf8');
   await writeFile(path.join(dir, 'rss.xml'), renderRss(posts, site), 'utf8');
   await writeFile(path.join(dir, 'sitemap.xml'), renderSitemap(posts, site), 'utf8');
@@ -119,9 +139,6 @@ export async function publishToSite(article, image, inlineImages = [], site) {
   await writeFile(path.join(dir, 'about.html'), renderAbout(site), 'utf8');
   // .nojekyll — чтобы GitHub Pages не пытался обрабатывать сайт через Jekyll.
   await writeFile(path.join(dir, '.nojekyll'), '', 'utf8');
-
-  log.ok(`Сайт обновлён: ${url} (всего статей в ленте: ${posts.length})`);
-  return { skipped: false, url, slug, total: posts.length };
 }
 
 const PAGE_CSS =
