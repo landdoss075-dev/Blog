@@ -5,16 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Как я оживил свой проект 2009 года с помощью ИИ — история одного портирования</title>
 <meta name="description" content="Когда я увидел новость про Carmageddon, который заработал в браузере на 60 кадрах в секунду, у меня внутри что-то щёлкнуло. Три года назад я сам пытался вытащить из мёртвой Delphi-программы рабочий модуль и пересадить ег">
+<link rel="canonical" href="https://landdoss075-dev.github.io/Blog/posts/2026-07-07-kak-ya-ozhivil-svoy-proekt-2009-goda-s-pomoschyu-ii-istoriya.html">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Как я оживил свой проект 2009 года с помощью ИИ — история одного портирования">
 <meta property="og:description" content="Когда я увидел новость про Carmageddon, который заработал в браузере на 60 кадрах в секунду, у меня внутри что-то щёлкнуло. Три года назад я сам пытался вытащить из мёртвой Delphi-программы рабочий модуль и пересадить ег">
 <meta property="og:image" content="https://images.unsplash.com/photo-1575925241243-c92143b66005?crop=entropy&amp;cs=tinysrgb&amp;fit=max&amp;fm=jpg&amp;ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODM0NDM2NjV8&amp;ixlib=rb-4.1.0&amp;q=80&amp;w=1080">
 <link rel="alternate" type="application/rss+xml" href="../rss.xml">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Как я оживил свой проект 2009 года с помощью ИИ — история одного портирования","description":"Когда я увидел новость про Carmageddon, который заработал в браузере на 60 кадрах в секунду, у меня внутри что-то щёлкнуло. Три года назад я сам пытался вытащить из мёртвой Delphi-программы рабочий модуль и пересадить ег","datePublished":"2026-07-07T17:01:06.683Z","author":{"@type":"Person","name":"Редакция"},"publisher":{"@type":"Organization","name":"Нейробудни"},"image":"https://images.unsplash.com/photo-1575925241243-c92143b66005?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODM0NDM2NjV8&ixlib=rb-4.1.0&q=80&w=1080","mainEntityOfPage":"https://landdoss075-dev.github.io/Blog/posts/2026-07-07-kak-ya-ozhivil-svoy-proekt-2009-goda-s-pomoschyu-ii-istoriya.html"}</script>
 </head>
 <body style="max-width:720px;margin:0 auto;padding:24px 16px;font:18px/1.7 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">
 <p><a href="../index.html" style="color:#0a66c2;text-decoration:none">← Все статьи</a></p>
 <h1>Как я оживил свой проект 2009 года с помощью ИИ — история одного портирования</h1>
-<p style="color:#888;font-size:15px">7 июля 2026 г.</p>
+<p style="color:#888;font-size:15px">Редакция · 7 июля 2026 г.</p>
 <img src="https://images.unsplash.com/photo-1575925241243-c92143b66005?crop=entropy&amp;cs=tinysrgb&amp;fit=max&amp;fm=jpg&amp;ixid=M3w5NTk5NzF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3ODM0NDM2NjV8&amp;ixlib=rb-4.1.0&amp;q=80&amp;w=1080" alt="" style="width:100%;border-radius:12px;margin:16px 0">
 <p>Когда я увидел новость про Carmageddon, который заработал в браузере на 60 кадрах в секунду, у меня внутри что-то щёлкнуло. Три года назад я сам пытался вытащить из мёртвой Delphi-программы рабочий модуль и пересадить его в веб. Только у меня не было ни энтузиазма энтузиаста-одиночки, ни, чего уж скрывать, нормального понимания, во что я лезу. Закончилось всё папкой с исходниками, которую я не открывал полтора года.</p>
 <p>Проект был простой на бумаге: старая программа расчёта раскроя материала для мебельного цеха, написанная на Delphi 7 году примерно в 2008-м. Заказчик хотел веб-версию, чтобы менеджеры считали раскрой прямо из браузера, без установки. Логика там была нетривиальная — алгоритмы упаковки прямоугольников, оптимизация отходов. Переписывать с нуля — недели работы. Портировать — тоже недели, но другого рода: разбираться, что вообще делает код 15-летней давности.</p>
@@ -36,5 +38,9 @@
 <p>Мой раскрой в итоге переехал в браузер за три недели вместо изначально планируемых двух месяцев. Не рекорд, но заказчик остался с работающим инструментом, а я — с пониманием, как вообще подступаться к чужому старому коду без паники.</p>
 <p>А у вас были случаи, когда приходилось оживлять или портировать старый проект — свой или чужой? Что оказалось сложнее, чем казалось на старте?</p><p><b>Понравился разбор?</b> Подпишитесь на канал — впереди ещё больше практичных статей про ИИ-инструменты. А оперативные новости и короткие заметки про нейросети — в нашем Telegram-канале <a href="https://t.me/ai_news_blog" target="_blank" rel="noopener">«Нейробудни»</a>. Своим опытом и вопросами делитесь в комментариях.</p>
 <p style="color:#888;font-size:15px">#ии инструменты #разработка #легаси код #портирование #браузерные технологии</p>
+<div style="margin:32px 0 8px;padding:16px;border-top:1px solid #eee;color:#444;font-size:15px">
+  <b>Редакция</b>
+  <br><a href="../about.html" style="color:#0a66c2;text-decoration:none">Об авторе →</a>
+</div>
 </body>
 </html>
