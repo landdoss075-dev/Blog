@@ -31,6 +31,9 @@ export function buildSystemPrompt(persona = DEFAULT_PERSONA) {
   «В чём проблема», «Конкретные шаги», «Что реально работает», «Коротко о проблеме».
   Переходы между мыслями делай живыми, как в человеческой статье.
 - НЕ нумеруй механически «Шаг 1 / Шаг 2 / Шаг 3», если этого прямо не требует выбранный формат.
+- Делай структуру для чтения: 3-5 коротких подзаголовков внутри статьи через <h2>.
+- НЕ имитируй подзаголовки жирным абзацем вида <p><b>...</b></p>; для разделов используй только <h2>.
+- Каждый <h2> должен быть понятным и живым: 3-8 слов, без точки в конце.
 
 Ответ верни СТРОГО в формате JSON (без markdown-обёртки), по схеме:
 Первый символ ответа должен быть {, последний символ ответа должен быть }.
@@ -39,6 +42,7 @@ export function buildSystemPrompt(persona = DEFAULT_PERSONA) {
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "версия для Telegram: 600-900 символов, с эмодзи и абзацами, без HTML-тегов кроме <b> и <i>",
   "image_query": "3-4 английских слова — КОНКРЕТНЫЙ визуальный объект, не абстракция",
+  "image_queries": ["3 разных английских запроса для картинок: обложка, первая иллюстрация, вторая иллюстрация"],
   "tags": ["3-5", "коротких", "тегов"]
 }`;
 }
@@ -106,12 +110,21 @@ ${guidance}
   то, ради чего статью дочитают до конца.
 - Не пересказывай новость дословно и не копируй факты, в которых не уверен.
 - Цель — максимум дочитываний и времени чтения: читатель должен унести из текста реальную пользу.
+- Внутри статьи обязательно используй 3-5 подзаголовков <h2>. Они должны разделять смысловые блоки,
+  а не быть жирным текстом внутри абзаца.
 
 ЗАГОЛОВКИ (3 варианта, разные между собой):
 - Стиль хотя бы одного: ${titleStyle}.
 - НЕ используй шаблон «[новость] — как сделать…» через тире — им забита вся лента.
 ${recentTitles.length ? `- Эти заголовки уже выходили недавно — НЕ повторяй их структуру и формулировки:\n${recentTitles.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
 ${recentTopicHints.length ? `\nЗАПРЕЩЁННЫЕ ПОВТОРЫ:\nЭти инфоповоды уже были недавно. Не пересказывай их другими словами и не делай статью вокруг того же предмета/персоны/цифры:\n${recentTopicHints.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
+
+КАРТИНКИ:
+- Верни image_queries: ровно 3 разных английских поисковых запроса для Unsplash.
+- 1-й запрос — обложка всей статьи, 2-й и 3-й — разные конкретные сцены/объекты из разных частей статьи.
+- Не повторяй один и тот же смысл в трёх запросах. Плохо: ["garden", "vegetable garden", "summer garden"].
+- Хорошо: ["greenhouse tomatoes", "watering garden beds", "preserving jars kitchen"].
+- Каждый запрос: 2-5 английских слов, предметный, без абстракций вроде "success", "future", "lifestyle".
 
 Напиши ОРИГИНАЛЬНУЮ статью для русскоязычной аудитории ${topicLabel}.`;
 }
@@ -151,6 +164,7 @@ export function buildRepairMessages(raw, topic = {}) {
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "600-900 символов для Telegram, без HTML-тегов кроме <b> и <i>",
   "image_query": "3-4 английских слова для поиска конкретной картинки",
+  "image_queries": ["3 разных английских запроса: обложка, первая иллюстрация, вторая иллюстрация"],
   "tags": ["3-5", "коротких", "тегов"]
 }
 
@@ -158,6 +172,8 @@ export function buildRepairMessages(raw, topic = {}) {
 - Не добавляй новые факты и не переписывай статью с нуля.
 - Если в исходном ответе нет 3 заголовков, придумай недостающие по смыслу уже написанной статьи.
 - Если Telegram-версии нет, сделай краткую версию из статьи.
+- Если в статье жирные псевдоподзаголовки вида <p><b>...</b></p>, преврати их в <h2>...</h2>.
+- Если image_queries нет, добавь 3 разных предметных запроса по смыслу статьи.
 - Верни только JSON. Никаких \`\`\`, вступлений, комментариев и пояснений.
 
 Исходный ответ модели:
@@ -209,6 +225,35 @@ export function extractJson(raw) {
   }
 }
 
+function normalizeArticleHtml(html) {
+  return String(html || '')
+    .replace(/<p>\s*<(?:b|strong)>\s*([^<]{3,90}?)\s*<\/(?:b|strong)>\s*<\/p>/gi, (_, text) => {
+      const heading = toPlainText(text).trim().replace(/[.:;!?]+$/u, '');
+      return heading ? `<h2>${heading}</h2>` : '';
+    })
+    .replace(/<p>\s*<(?:b|strong)>\s*([^<]{3,90}?)\s*<\/(?:b|strong)>\s*<br>\s*<\/p>/gi, (_, text) => {
+      const heading = toPlainText(text).trim().replace(/[.:;!?]+$/u, '');
+      return heading ? `<h2>${heading}</h2>` : '';
+    });
+}
+
+function normalizeImageQueries(article) {
+  const raw = Array.isArray(article.image_queries) ? article.image_queries : [];
+  const queries = raw
+    .concat(article.image_query || [])
+    .map((q) => String(q || '').trim().toLowerCase())
+    .filter(Boolean);
+  const unique = [];
+  const seen = new Set();
+  for (const q of queries) {
+    const key = q.replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(q.slice(0, 80));
+  }
+  return unique.slice(0, 3);
+}
+
 /** Парсит сырой ответ модели в нормализованную и очищенную статью. */
 export function parseArticle(raw, cta = {}) {
   if (!raw) throw new Error('Модель вернула пустой ответ');
@@ -226,7 +271,7 @@ export function parseArticle(raw, cta = {}) {
   }
 
   // Санитизация HTML — критично для автопостинга без присмотра.
-  article.html = sanitizeHtml(article.html);
+  article.html = sanitizeHtml(normalizeArticleHtml(article.html));
   // Кол-во слов в теле — считаем ДО добавления CTA, чтобы CTA не завышал метрику.
   article.bodyWords = toPlainText(article.html).split(/\s+/).filter(Boolean).length;
   // CTA-подписка в конце (монетизация Дзена завязана на подписчиков). Доверенный HTML —
@@ -247,6 +292,7 @@ export function parseArticle(raw, cta = {}) {
   const tg = article.telegram ? sanitizeHtml(article.telegram, ['b', 'i']) : toPlainText(article.html).slice(0, 900);
   article.telegram = tg;
   article.image_query = article.image_query || 'article illustration';
+  article.image_queries = normalizeImageQueries(article);
   return article;
 }
 
@@ -266,6 +312,13 @@ export function qualityIssue(article, { forbiddenTerms = [] } = {}) {
   }
   if ((article.bodyWords || 0) < 400) {
     return `тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥400)`;
+  }
+  const h2Count = (article.html.match(/<h2>/g) || []).length;
+  if (h2Count < 2) {
+    return `мало подзаголовков h2 (${h2Count}, нужно ≥2)`;
+  }
+  if ((article.image_queries || []).length < 2) {
+    return `мало разных запросов для картинок (${article.image_queries?.length || 0}, нужно ≥2)`;
   }
   const forbidden = containsForbiddenTerm(
     [article.title, article.html, article.telegram, ...(article.tags || [])].join(' '),

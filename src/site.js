@@ -179,6 +179,14 @@ async function writeSiteFiles(posts, site) {
 
 const PAGE_CSS =
   'max-width:720px;margin:0 auto;padding:24px 16px;font:18px/1.7 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a';
+const ARTICLE_STYLE = `<style>
+h1{font-size:2rem;line-height:1.18;margin:18px 0 10px}
+h2{font-size:1.35rem;line-height:1.35;margin:34px 0 12px;color:#111}
+h3{font-size:1.12rem;line-height:1.4;margin:26px 0 10px;color:#222}
+p{margin:0 0 16px}
+ul,ol{margin:0 0 18px;padding-left:24px}
+li{margin:0 0 8px}
+</style>`;
 
 function ruDate(d) {
   return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -237,6 +245,7 @@ function renderPostPage(post, site) {
 ${post.image ? `<meta property="og:image" content="${xmlEscape(post.image.url)}">` : ''}
 <link rel="alternate" type="application/rss+xml" href="../rss.xml">
 ${articleJsonLd(post, site)}
+${ARTICLE_STYLE}
 </head>
 <body style="${PAGE_CSS}">
 <p><a href="../index.html" style="color:#0a66c2;text-decoration:none">← Все статьи</a></p>
