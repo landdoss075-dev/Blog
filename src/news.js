@@ -5,12 +5,12 @@ import { log } from './log.js';
 
 const parser = new Parser({ timeout: 15000 });
 
-/** Заголовки недавно опубликованных статей (для защиты от повторов при 3 постах/день). */
-async function loadRecentTitles(dir, limit = 8) {
+/** Недавно опубликованные статьи (для защиты от повторов при 3 постах/день). */
+async function loadRecentPosts(dir, limit = 12) {
   try {
     const file = path.resolve(dir, 'posts.json');
     const posts = JSON.parse(await readFile(file, 'utf8'));
-    return posts.slice(0, limit).map((p) => p.title).filter(Boolean);
+    return posts.slice(0, limit);
   } catch {
     return [];
   }
@@ -107,6 +107,39 @@ function keywords(title) {
     .filter((s) => !QUERY_STEMS.has(s));
 }
 
+function uniqueKeywords(text) {
+  return [...new Set(keywords(text))];
+}
+
+function recentTopicText(post) {
+  const source = post.source || {};
+  return [
+    post.title,
+    post.excerpt,
+    ...(post.tags || []),
+    source.theme,
+    source.headline,
+    ...(source.headlines || []),
+    ...(source.trendKeywords || []),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function similarityScore(aWords, bWords) {
+  if (!aWords.length || !bWords.length) return { shared: 0, jaccard: 0 };
+  const b = new Set(bWords);
+  let shared = 0;
+  for (const w of aWords) if (b.has(w)) shared++;
+  const union = new Set([...aWords, ...bWords]).size || 1;
+  return { shared, jaccard: shared / union };
+}
+
+function isWithinHours(date, hours) {
+  const ts = date ? Date.parse(date) : NaN;
+  return !Number.isNaN(ts) && Date.now() - ts <= hours * 60 * 60 * 1000;
+}
+
 async function fetchFeed(url) {
   try {
     const feed = await parser.parseURL(url);
@@ -200,19 +233,44 @@ export async function fetchTopic(niche) {
   // Защита от повторов (важно при 3 постах/день и затяжных «флуд-историях» на несколько дней).
   // Дубль = заголовок делит ≥2 значимых слова (или ≥30% по Жаккару) с любой из недавних статей.
   // Этого достаточно, чтобы поймать разные формулировки одной и той же истории.
-  const recentTitles = await loadRecentTitles(niche.dir, 12);
-  const recentKwSets = recentTitles.map((t) => new Set(keywords(t)));
-  const isRecentDuplicate = (title) => {
-    const kw = keywords(title);
+  const recentPosts = await loadRecentPosts(niche.dir, 18);
+  const recentTitles = recentPosts.map((p) => p.title).filter(Boolean);
+  const recentTopicHints = recentPosts
+    .slice(0, 8)
+    .map((p) => p.source?.headline || p.source?.theme || p.title)
+    .filter(Boolean);
+  const recentKwSets = recentPosts.map((post) => ({
+    sameDay: isWithinHours(post.date, 30),
+    words: uniqueKeywords(recentTopicText(post)),
+  }));
+  const duplicateScore = (title) => {
+    const kw = uniqueKeywords(title);
     if (kw.length === 0) return false;
-    return recentKwSets.some((set) => {
-      let shared = 0;
-      for (const s of kw) if (set.has(s)) shared++;
-      const union = new Set([...kw, ...set]).size || 1;
-      return shared >= 2 || shared / union >= 0.3;
-    });
+    return recentKwSets.reduce((max, recent) => {
+      const score = similarityScore(kw, recent.words);
+      // За последние сутки фильтр жёстче: одна и та же новость часто маскируется
+      // другим заголовком, но оставляет общий предмет/персону/цифру в тексте.
+      const weighted = {
+        shared: score.shared,
+        jaccard: score.jaccard,
+        duplicate: recent.sameDay ? score.shared >= 2 || score.jaccard >= 0.18 : score.shared >= 3 || score.jaccard >= 0.28,
+      };
+      if (!max || weighted.shared > max.shared || weighted.jaccard > max.jaccard) return weighted;
+      return max;
+    }, null);
   };
-  const top = scored.find((x) => !isRecentDuplicate(x.title)) || scored[0];
+  const isRecentDuplicate = (title) => duplicateScore(title)?.duplicate;
+  let top = scored.find((x) => !isRecentDuplicate(x.title));
+  if (!top) {
+    // Если вся лента забита одним инфоповодом, всё равно берём наименее похожий вариант,
+    // а не первый самый горячий дубль.
+    top = [...scored].sort((a, b) => {
+      const da = duplicateScore(a.title) || { shared: 0, jaccard: 0 };
+      const db = duplicateScore(b.title) || { shared: 0, jaccard: 0 };
+      return da.shared - db.shared || da.jaccard - db.jaccard || b.score - a.score;
+    })[0];
+    log.warn('Все горячие поводы похожи на недавние — взял наименее похожий вариант из ленты.');
+  }
   if (top !== scored[0]) log.info('Похожая тема уже выходила недавно — взял другой, свежий повод.');
 
   const trendKeywords = [...freq.entries()]
@@ -239,5 +297,6 @@ export async function fetchTopic(niche) {
     headlines,
     trendKeywords,
     recentTitles, // недавние заголовки — чтобы модель не повторяла их формулировки
+    recentTopicHints, // недавние инфоповоды — чтобы модель не перефразировала тот же сюжет
   };
 }

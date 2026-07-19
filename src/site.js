@@ -98,6 +98,7 @@ export async function publishToSite(article, image, inlineImages = [], site) {
     excerpt: toPlainText(article.html).slice(0, 220),
     tags: article.tags || [],
     image: image?.url ? { url: image.url, author: image.author || '' } : null,
+    source: article.source || null,
     date,
     url,
   };

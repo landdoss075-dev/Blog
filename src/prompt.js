@@ -77,6 +77,7 @@ export function buildUserPrompt({
   headlines,
   trendKeywords = [],
   recentTitles = [],
+  recentTopicHints = [],
   topicLabel = 'про ИИ-инструменты',
   promptFormats = FORMATS,
   titleStyles = TITLE_STYLES,
@@ -110,6 +111,7 @@ ${guidance}
 - Стиль хотя бы одного: ${titleStyle}.
 - НЕ используй шаблон «[новость] — как сделать…» через тире — им забита вся лента.
 ${recentTitles.length ? `- Эти заголовки уже выходили недавно — НЕ повторяй их структуру и формулировки:\n${recentTitles.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
+${recentTopicHints.length ? `\nЗАПРЕЩЁННЫЕ ПОВТОРЫ:\nЭти инфоповоды уже были недавно. Не пересказывай их другими словами и не делай статью вокруг того же предмета/персоны/цифры:\n${recentTopicHints.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
 
 Напиши ОРИГИНАЛЬНУЮ статью для русскоязычной аудитории ${topicLabel}.`;
 }

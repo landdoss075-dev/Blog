@@ -41,6 +41,14 @@ async function main() {
   // 2. Генерация статьи
   log.step(`2/5 Генерация статьи (${config.provider})`);
   const article = await generateArticle(topic);
+  article.source = {
+    niche: niche.key,
+    theme: topic.theme,
+    headline: topic.headline,
+    headlines: topic.headlines || [],
+    trendKeywords: topic.trendKeywords || [],
+    selectedAt: new Date().toISOString(),
+  };
 
   // 3. Картинки (обложка + иллюстрации в текст)
   log.step('3/5 Подбор картинок (Unsplash)');
