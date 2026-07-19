@@ -49,6 +49,30 @@ function cdata(html) {
   return `<![CDATA[${String(html).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
+function rssArticleHtml(html = '') {
+  return String(html)
+    .replace(/<p>\s*<img\b[\s\S]*?<\/p>/gi, '')
+    .replace(/<p>\s*<b>Понравился разбор\?<\/b>[\s\S]*?<\/p>\s*$/i, '')
+    .trim();
+}
+
+function contactBlock(site) {
+  const contact = site.contact;
+  if (!contact?.url && !contact?.email) return '';
+  const rows = [
+    '<h2 style="margin-top:28px">Выходные данные и связь</h2>',
+    `<p style="color:#444">Ресурс: ${xmlEscape(site.title)}. Периодичность обновления: ежедневно.</p>`,
+  ];
+  if (contact.email) {
+    rows.push(`<p style="color:#444">Email редакции: <a href="mailto:${xmlEscape(contact.email)}" style="color:#0a66c2;text-decoration:none">${xmlEscape(contact.email)}</a></p>`);
+  }
+  if (contact.url) {
+    const label = contact.label || 'Связь с редакцией';
+    rows.push(`<p style="color:#444">${xmlEscape(label)}: <a href="${xmlEscape(contact.url)}" style="color:#0a66c2;text-decoration:none">${xmlEscape(contact.url)}</a></p>`);
+  }
+  return rows.join('\n');
+}
+
 /**
  * Равномерно вставляет иллюстрации между абзацами статьи
  * (дольше читают/скроллят → больше минут чтения, что важно для монетизации Дзена).
@@ -274,6 +298,7 @@ function renderAbout(site) {
 <h2 style="margin-bottom:4px">${xmlEscape(name)}</h2>
 <p style="color:#444">${xmlEscape(bio)}</p>
 <p style="color:#666;font-size:15px">${xmlEscape(site.description)}</p>
+${contactBlock(site)}
 </body>
 </html>`;
 }
@@ -296,10 +321,11 @@ function renderRobots(site) {
   return `User-agent: *\nAllow: /\nSitemap: ${site.url}/sitemap.xml\n`;
 }
 
-/** RSS-лента по требованиям Яндекс Дзена (namespace yandex/media, content:encoded, enclosure). */
+/** RSS-лента по требованиям Яндекс Дзена: чистый yandex:full-text + отдельные media-теги. */
 function renderRss(posts, site) {
   const items = posts
     .map((p) => {
+      const fullText = toPlainText(rssArticleHtml(p.html));
       const enclosure = p.image
         ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="image/jpeg" length="0"/>` +
           `\n      <media:content url="${xmlEscape(p.image.url)}" medium="image"/>`
@@ -311,14 +337,15 @@ function renderRss(posts, site) {
       <guid isPermaLink="true">${xmlEscape(p.url)}</guid>
       <pubDate>${new Date(p.date).toUTCString()}</pubDate>
       <description>${xmlEscape(p.excerpt)}</description>
-      <content:encoded>${cdata(p.html)}</content:encoded>
-      <yandex:full-text>${cdata(toPlainText(p.html))}</yandex:full-text>${enclosure}${cats}
+      <author>${xmlEscape(authorName(site))}</author>
+      <yandex:genre>article</yandex:genre>
+      <yandex:full-text>${cdata(fullText)}</yandex:full-text>${enclosure}${cats}
     </item>`;
     })
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:yandex="http://news.yandex.ru" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<rss version="2.0" xmlns:yandex="http://news.yandex.ru" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>${xmlEscape(site.title)}</title>
     <link>${xmlEscape(site.url)}</link>

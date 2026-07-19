@@ -8,8 +8,9 @@
  *   key           — идентификатор для --niche и путей
  *   dir           — папка контента (сайт+RSS+хранилище статей)
  *   persona       — «кто автор»: первая строка системного промпта (голос статьи)
- *   site          — { title, description, url, author }
+ *   site          — { title, description, url, author, contact }
  *                     author: { name, bio } — для E-E-A-T (страница автора + подпись)
+ *                     contact: { label, urlEnv/email } — для выходных данных ресурса
  *   telegram      — { channelEnv, urlEnv } — имена ENV-переменных с токеном канала/ссылкой
  *   newsQueries   — поисковые запросы Google News для этой темы
  *   promptFormats — нишевые форматы подачи для генерации статей (если не заданы — общие)
@@ -74,6 +75,7 @@ export const niches = {
           'до зимних заготовок. Пишу о даче только то, что проверила своими руками. Верю, что хороший ' +
           'урожай начинается не с удобрений, а с наблюдательности.',
       },
+      contact: { label: 'Telegram-канал редакции', urlEnv: 'DACHA_TELEGRAM_CHANNEL_URL' },
     },
     telegram: { botTokenEnv: 'DACHA_TELEGRAM_BOT_TOKEN', channelEnv: 'DACHA_TELEGRAM_CHANNEL_ID', urlEnv: 'DACHA_TELEGRAM_CHANNEL_URL' },
     channelName: 'Дачные будни',
@@ -469,11 +471,19 @@ export function getNiche(key) {
  */
 export function resolveSite(niche) {
   const s = niche.site;
+  const contact = s.contact
+    ? {
+        label: s.contact.label,
+        email: s.contact.email,
+        url: s.contact.url || (s.contact.urlEnv ? process.env[s.contact.urlEnv] : ''),
+      }
+    : null;
   return {
     title: s.title,
     description: s.description,
     url: (process.env[s.urlEnv] || '').replace(/\/+$/, ''),
     author: s.author,
+    contact,
     dir: niche.dir,
     maxPosts: Number(process.env.SITE_MAX_POSTS || 50),
   };
