@@ -1,12 +1,10 @@
 name: Daily Pets Post
 
 on:
-  # 3 раза в день: примерно 10:15 / 15:15 / 20:15 МСК.
+  # 1 раз в день: 10:00 МСК (07:00 UTC).
   # Публикация: Telegram «Питомцы в будни» + сайт/RSS pitomcy-budni.ru.
   schedule:
-    - cron: '15 7 * * *'
-    - cron: '15 12 * * *'
-    - cron: '15 17 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

@@ -1,12 +1,10 @@
 name: Daily Finance Post
 
 on:
-  # 3 раза в день: примерно 10:05 / 15:05 / 20:05 МСК.
+  # 1 раз в день: 10:00 МСК (07:00 UTC).
   # Публикация: Telegram «Финансовые будни» + сайт/RSS finbudni.ru.
   schedule:
-    - cron: '5 7 * * *'
-    - cron: '5 12 * * *'
-    - cron: '5 17 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

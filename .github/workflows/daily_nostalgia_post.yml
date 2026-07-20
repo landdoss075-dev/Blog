@@ -1,12 +1,10 @@
 name: Daily Nostalgia Post
 
 on:
-  # 3 раза в день: примерно 10:20 / 15:20 / 20:20 МСК.
+  # 1 раз в день: 10:00 МСК (07:00 UTC).
   # Публикация: Telegram «Как жили раньше» + сайт/RSS kak-zhili-ranshe.ru.
   schedule:
-    - cron: '20 7 * * *'
-    - cron: '20 12 * * *'
-    - cron: '20 17 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

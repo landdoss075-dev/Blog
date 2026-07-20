@@ -1,12 +1,10 @@
 name: Daily Dacha Post
 
 on:
-  # 3 раза в день, как у «Нейробудней»: 10:00 / 15:00 / 20:00 МСК.
+  # 1 раз в день: 10:00 МСК (07:00 UTC).
   # Каждая публикация: Telegram «Дачные будни» + сайт/RSS.
   schedule:
     - cron: '0 7 * * *'
-    - cron: '0 12 * * *'
-    - cron: '0 17 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
