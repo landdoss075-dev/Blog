@@ -1,6 +1,111 @@
 import { config } from './config.js';
 import { log } from './log.js';
 
+const NO_TEXT_QUERY_SUFFIX = 'no text no logo no sign';
+const TEXT_RISK_METADATA = [
+  'text',
+  'word',
+  'letter',
+  'letters',
+  'sign',
+  'signage',
+  'poster',
+  'billboard',
+  'logo',
+  'label',
+  'packaging',
+  'screen',
+  'monitor',
+  'display',
+  'interface',
+  'website',
+  'webpage',
+  'browser',
+  'newspaper',
+  'magazine',
+  'book',
+  'receipt',
+  'bill',
+  'invoice',
+  'document',
+  'paperwork',
+  'keyboard',
+  'storefront',
+  'street sign',
+];
+
+const QUERY_TEXT_RISK_TERMS = new Set([
+  'screen',
+  'browser',
+  'search',
+  'chat',
+  'app',
+  'interface',
+  'website',
+  'webpage',
+  'document',
+  'documents',
+  'receipt',
+  'receipts',
+  'bill',
+  'bills',
+  'invoice',
+  'notebook',
+  'notes',
+  'paperwork',
+  'paper',
+  'book',
+  'newspaper',
+  'magazine',
+  'poster',
+  'sign',
+  'logo',
+  'label',
+  'labels',
+  'packaging',
+  'text',
+  'words',
+  'letters',
+  'keyboard',
+  'storefront',
+]);
+
+function sanitizeQueryBase(query) {
+  const raw = String(query || '').trim().toLowerCase();
+  const words = raw.replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean);
+  const cleaned = words.filter((w) => !QUERY_TEXT_RISK_TERMS.has(w)).join(' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.split(/\s+/).filter(Boolean).length >= 2) return cleaned.slice(0, 80);
+
+  if (/\b(phone|smartphone|mobile)\b/.test(raw)) return 'hands holding phone';
+  if (/\b(laptop|computer|pc)\b/.test(raw)) return 'closed laptop desk';
+  if (/\b(tablet)\b/.test(raw)) return 'tablet on desk';
+  if (/\b(document|receipt|bill|paper|notebook|book|newspaper|magazine)\b/.test(raw)) return 'home office desk';
+  if (/\b(card|bank|money|budget|finance|coins)\b/.test(raw)) return 'coins wallet table';
+  if (/\b(garden|tomato|cucumber|seedling|plant)\b/.test(raw)) return 'garden plants closeup';
+  if (/\b(cat|dog|pet)\b/.test(raw)) return 'pet sleeping home';
+  if (/\b(family|parent|child|couple)\b/.test(raw)) return 'family dinner table';
+  return 'hands table home';
+}
+
+function prepareQuery(query) {
+  const base = sanitizeQueryBase(query);
+  if (!base) return '';
+  return `${base} ${NO_TEXT_QUERY_SUFFIX}`;
+}
+
+function hasTextRiskMetadata(photo) {
+  const text = [
+    photo.alt_description,
+    photo.description,
+    photo.location?.name,
+    ...(photo.tags || []).map((tag) => tag.title),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return TEXT_RISK_METADATA.some((term) => text.includes(term));
+}
+
 /**
  * Ищет тематическое фото на Unsplash по ключевым словам.
  * Если ключа нет или поиск не дал результата — возвращает null,
@@ -12,7 +117,8 @@ export async function fetchImage(query) {
     return null;
   }
 
-  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high`;
+  const safeQuery = prepareQuery(query);
+  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(safeQuery)}&orientation=landscape&content_filter=high`;
 
   try {
     const res = await fetch(url, {
@@ -22,6 +128,9 @@ export async function fetchImage(query) {
       throw new Error(`Unsplash ${res.status}`);
     }
     const data = await res.json();
+    if (hasTextRiskMetadata(data)) {
+      throw new Error('фото похоже на изображение с текстом/вывеской/экраном');
+    }
     const image = {
       url: data.urls?.regular,
       author: data.user?.name,
@@ -60,13 +169,14 @@ export async function fetchImages(query, count = 3, fallbackQueries = []) {
 
   for (let i = 0; i < queries.length; i++) {
     const q = queries[i];
+    const safeQuery = sanitizeQueryBase(q);
     try {
       const list = await fetchImagesOnce(q, n);
-      log.ok(`Картинок с Unsplash: ${list.length} по запросу "${q}" (обложка + ${list.length - 1} в текст)`);
+      log.ok(`Картинок с Unsplash: ${list.length} по запросу "${safeQuery}" (обложка + ${list.length - 1} в текст)`);
       return list;
     } catch (err) {
       const more = i < queries.length - 1 ? ' — пробую запасной запрос.' : '';
-      log.warn(`Unsplash не дал фото по запросу "${q}" (${err.message})${more}`);
+      log.warn(`Unsplash не дал фото по запросу "${safeQuery}" (${err.message})${more}`);
     }
   }
 
@@ -89,12 +199,14 @@ async function fetchImagesByQueries(queries, count, fallbackQueries = []) {
   const images = [];
   const usedUrls = new Set();
   const usedAuthors = new Set();
+  const usedQueries = new Set();
   for (let slot = 0; slot < slots.length; slot++) {
-    const image = await fetchDistinctImage(slots[slot], usedUrls, usedAuthors);
+    const image = await fetchDistinctImage(slots[slot], usedUrls, usedAuthors, usedQueries);
     if (!image) continue;
     images.push(image);
     usedUrls.add(normalizeImageUrl(image.url));
     if (image.author) usedAuthors.add(image.author.toLowerCase());
+    usedQueries.add(image.query);
     log.ok(`Картинка ${slot + 1}/${count}: Unsplash по запросу "${image.query}" (автор: ${image.author || 'неизвестен'})`);
   }
 
@@ -107,17 +219,19 @@ async function fetchImagesByQueries(queries, count, fallbackQueries = []) {
   return [];
 }
 
-async function fetchDistinctImage(queries, usedUrls, usedAuthors) {
+async function fetchDistinctImage(queries, usedUrls, usedAuthors, usedQueries = new Set()) {
   for (const query of queries) {
+    const safeQuery = sanitizeQueryBase(query);
+    if (usedQueries.has(safeQuery)) continue;
     try {
       const candidates = await fetchImagesOnce(query, 4);
       const chosen =
         candidates.find((img) => !usedUrls.has(normalizeImageUrl(img.url)) && !usedAuthors.has(String(img.author || '').toLowerCase())) ||
         candidates.find((img) => !usedUrls.has(normalizeImageUrl(img.url)));
-      if (chosen) return { ...chosen, query };
-      log.warn(`Unsplash вернул уже использованные фото по запросу "${query}" — пробую другой запрос.`);
+      if (chosen) return { ...chosen, query: safeQuery };
+      log.warn(`Unsplash вернул уже использованные фото по запросу "${safeQuery}" — пробую другой запрос.`);
     } catch (err) {
-      log.warn(`Unsplash не дал фото по запросу "${query}" (${err.message}) — пробую другой запрос.`);
+      log.warn(`Unsplash не дал фото по запросу "${safeQuery}" (${err.message}) — пробую другой запрос.`);
     }
   }
   return null;
@@ -133,15 +247,18 @@ function normalizeImageUrl(url = '') {
 }
 
 async function fetchImagesOnce(query, count) {
-  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high&count=${count}`;
+  const safeQuery = prepareQuery(query);
+  const requestCount = Math.max(count, 8);
+  const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(safeQuery)}&orientation=landscape&content_filter=high&count=${requestCount}`;
   const res = await fetch(url, {
     headers: { Authorization: `Client-ID ${config.unsplash.accessKey}` },
   });
   if (!res.ok) throw new Error(`Unsplash ${res.status}`);
   const data = await res.json();
-  const list = (Array.isArray(data) ? data : [])
+  const safePhotos = (Array.isArray(data) ? data : []).filter((d) => !hasTextRiskMetadata(d));
+  const list = safePhotos
     .map((d) => ({ url: d.urls?.regular, author: d.user?.name, authorUrl: d.user?.links?.html }))
     .filter((x) => x.url);
-  if (list.length === 0) throw new Error('пустой ответ');
-  return list;
+  if (list.length === 0) throw new Error('нет фото без признаков видимого текста');
+  return list.slice(0, count);
 }

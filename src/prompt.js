@@ -46,8 +46,8 @@ export function buildSystemPrompt(persona = DEFAULT_PERSONA) {
   "titles": ["3 разных варианта заголовка, каждый до 90 символов, в разном стиле"],
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "версия для Telegram: 600-900 символов, с эмодзи и абзацами, без HTML-тегов кроме <b> и <i>",
-  "image_query": "3-4 английских слова — КОНКРЕТНЫЙ визуальный объект, не абстракция",
-  "image_queries": ["3 разных английских запроса для картинок: обложка, первая иллюстрация, вторая иллюстрация"],
+  "image_query": "3-4 английских слова — конкретное фото без видимого текста, вывесок, логотипов и экранных надписей",
+  "image_queries": ["3 разных английских запроса для картинок без видимого текста: обложка, первая иллюстрация, вторая иллюстрация"],
   "tags": ["3-5", "коротких", "тегов"]
 }`;
 }
@@ -126,10 +126,17 @@ ${recentTopicHints.length ? `\nЗАПРЕЩЁННЫЕ ПОВТОРЫ:\nЭти и
 
 КАРТИНКИ:
 - Верни image_queries: ровно 3 разных английских поисковых запроса для Unsplash.
+- Запросы пишем по-английски только потому, что Unsplash лучше ищет по английскому; сами фото
+  должны быть универсальны для русскоязычной аудитории и БЕЗ английских слов в кадре.
 - 1-й запрос — обложка всей статьи, 2-й и 3-й — разные конкретные сцены/объекты из разных частей статьи.
 - Не повторяй один и тот же смысл в трёх запросах. Плохо: ["garden", "vegetable garden", "summer garden"].
 - Хорошо: ["greenhouse tomatoes", "watering garden beds", "preserving jars kitchen"].
 - Каждый запрос: 2-5 английских слов, предметный, без абстракций вроде "success", "future", "lifestyle".
+- НЕЛЬЗЯ просить фото, где вероятен текст или английский интерфейс: screen, browser, search, chat,
+  app interface, document, receipt, bill, notebook, book, newspaper, magazine, poster, sign, logo,
+  label, packaging, keyboard, storefront, street sign.
+- Лучше просить предметные сцены без текста: hands holding phone, closed laptop desk, family dinner table,
+  greenhouse tomatoes, coins wallet table, cat sleeping home.
 
 Напиши ОРИГИНАЛЬНУЮ статью для русскоязычной аудитории ${topicLabel}.`;
 }
@@ -168,8 +175,8 @@ export function buildRepairMessages(raw, topic = {}) {
   "titles": ["3 разных варианта заголовка до 90 символов"],
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "600-900 символов для Telegram, без HTML-тегов кроме <b> и <i>",
-  "image_query": "3-4 английских слова для поиска конкретной картинки",
-  "image_queries": ["3 разных английских запроса: обложка, первая иллюстрация, вторая иллюстрация"],
+  "image_query": "3-4 английских слова для поиска конкретной картинки без видимого текста",
+  "image_queries": ["3 разных английских запроса без экранов, вывесок, документов и видимого текста: обложка, первая иллюстрация, вторая иллюстрация"],
   "tags": ["3-5", "коротких", "тегов"]
 }
 
@@ -178,7 +185,8 @@ export function buildRepairMessages(raw, topic = {}) {
 - Если в исходном ответе нет 3 заголовков, придумай недостающие по смыслу уже написанной статьи.
 - Если Telegram-версии нет, сделай краткую версию из статьи.
 - Если в статье жирные псевдоподзаголовки вида <p><b>...</b></p>, преврати их в <h2>...</h2>.
-- Если image_queries нет, добавь 3 разных предметных запроса по смыслу статьи.
+- Если image_queries нет, добавь 3 разных предметных запроса по смыслу статьи: без экранов,
+  вывесок, документов, логотипов, упаковок, книг, газет и видимого текста.
 - Верни только JSON. Никаких \`\`\`, вступлений, комментариев и пояснений.
 
 Исходный ответ модели:
@@ -242,11 +250,63 @@ function normalizeArticleHtml(html) {
     });
 }
 
+const IMAGE_TEXT_RISK_TERMS = new Set([
+  'screen',
+  'browser',
+  'search',
+  'chat',
+  'app',
+  'interface',
+  'website',
+  'webpage',
+  'document',
+  'documents',
+  'receipt',
+  'receipts',
+  'bill',
+  'bills',
+  'notebook',
+  'notes',
+  'paperwork',
+  'paper',
+  'book',
+  'newspaper',
+  'magazine',
+  'poster',
+  'sign',
+  'logo',
+  'label',
+  'labels',
+  'packaging',
+  'text',
+  'words',
+  'letters',
+  'keyboard',
+  'storefront',
+]);
+
+function sanitizeImageQuery(query) {
+  const raw = String(query || '').trim().toLowerCase();
+  const words = raw.replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean);
+  const cleaned = words.filter((w) => !IMAGE_TEXT_RISK_TERMS.has(w)).join(' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.split(/\s+/).filter(Boolean).length >= 2) return cleaned.slice(0, 80);
+
+  if (/\b(phone|smartphone|mobile)\b/.test(raw)) return 'hands holding phone';
+  if (/\b(laptop|computer|pc)\b/.test(raw)) return 'closed laptop desk';
+  if (/\b(tablet)\b/.test(raw)) return 'tablet on desk';
+  if (/\b(document|receipt|bill|paper|notebook|book)\b/.test(raw)) return 'home office desk';
+  if (/\b(card|bank|money|budget|finance|coins)\b/.test(raw)) return 'coins wallet table';
+  if (/\b(garden|tomato|cucumber|seedling|plant)\b/.test(raw)) return 'garden plants closeup';
+  if (/\b(cat|dog|pet)\b/.test(raw)) return 'pet sleeping home';
+  if (/\b(family|parent|child|couple)\b/.test(raw)) return 'family dinner table';
+  return 'hands table home';
+}
+
 function normalizeImageQueries(article) {
   const raw = Array.isArray(article.image_queries) ? article.image_queries : [];
   const queries = raw
     .concat(article.image_query || [])
-    .map((q) => String(q || '').trim().toLowerCase())
+    .map(sanitizeImageQuery)
     .filter(Boolean);
   const unique = [];
   const seen = new Set();
