@@ -51,6 +51,10 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER }}
+          OPENROUTER_IMAGE_MODEL: ${{ vars.OPENROUTER_IMAGE_MODEL }}
+          IMAGE_ASPECT_RATIO: ${{ vars.IMAGE_ASPECT_RATIO }}
+          IMAGE_RESOLUTION: ${{ vars.IMAGE_RESOLUTION }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           SEMEYNYE_BUDNI_SITE_URL: ${{ vars.SEMEYNYE_BUDNI_SITE_URL || 'https://semeynye-budni.ru' }}
           SEMEYNYE_BUDNI_TELEGRAM_BOT_TOKEN: ${{ secrets.SEMEYNYE_BUDNI_TELEGRAM_BOT_TOKEN }}

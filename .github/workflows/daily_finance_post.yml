@@ -51,6 +51,10 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER }}
+          OPENROUTER_IMAGE_MODEL: ${{ vars.OPENROUTER_IMAGE_MODEL }}
+          IMAGE_ASPECT_RATIO: ${{ vars.IMAGE_ASPECT_RATIO }}
+          IMAGE_RESOLUTION: ${{ vars.IMAGE_RESOLUTION }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           FINBUDNI_SITE_URL: ${{ vars.FINBUDNI_SITE_URL || 'https://finbudni.ru' }}
           FINBUDNI_TELEGRAM_BOT_TOKEN: ${{ secrets.FINBUDNI_TELEGRAM_BOT_TOKEN }}

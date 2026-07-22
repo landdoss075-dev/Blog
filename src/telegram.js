@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { log } from './log.js';
 
 const API = (botToken, method) => `https://api.telegram.org/bot${botToken}/${method}`;
@@ -36,6 +37,21 @@ async function tgCall(botToken, method, payload) {
   return data.result;
 }
 
+async function tgMultipartCall(botToken, method, fields, files) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined && value !== null) form.set(key, String(value));
+  }
+  for (const file of files) {
+    const bytes = await readFile(file.path);
+    form.set(file.field, new Blob([bytes], { type: file.mediaType || 'image/jpeg' }), file.filename || 'image.jpg');
+  }
+  const res = await fetch(API(botToken, method), { method: 'POST', body: form });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`${method}: ${data.description || res.status}`);
+  return data.result;
+}
+
 /**
  * Публикует пост в Telegram-канал ОДНИМ Rich-сообщением: обложка сверху + оформленная
  * статья (sendRichMessage, Bot API 10.1). Картинка встраивается через media[] по URL
@@ -50,8 +66,14 @@ export async function postToTelegram(article, image, tg) {
     return { skipped: true };
   }
   const call = (method, payload) => tgCall(tg.botToken, method, payload);
+  const multipartCall = (method, fields, files) => tgMultipartCall(tg.botToken, method, fields, files);
   const chat_id = tg.channelId;
   const hasImage = Boolean(image?.url);
+
+  if (image?.localPath) {
+    log.info('Обложка локальная — отправляю в Telegram загрузкой файла.');
+    return postFallback(call, chat_id, article, image, multipartCall);
+  }
 
   // Один Rich-пост: обложка (media[] по URL) + оформленная статья. При ошибке
   // (фича сырая / клиент не поддерживает) не роняем публикацию — фолбэк на фото+текст.
@@ -66,7 +88,7 @@ export async function postToTelegram(article, image, tg) {
     return { skipped: false, messageId: r?.message_id, rich: true };
   } catch (err) {
     log.warn(`sendRichMessage недоступен (${err.message}) — фолбэк на фото + обычный текст.`);
-    return postFallback(call, chat_id, article, image);
+    return postFallback(call, chat_id, article, image, multipartCall);
   }
 }
 
@@ -75,7 +97,7 @@ export async function postToTelegram(article, image, tg) {
  * тело статьи HTML-текстом, разбитое по лимиту Telegram (4096 симв.).
  * Telegram HTML не знает h2/ul/li — переводим заголовки в <b>, пункты в строки с «•».
  */
-async function postFallback(call, chat_id, article, image) {
+async function postFallback(call, chat_id, article, image, multipartCall = null) {
   const MSG_LIMIT = 4096;
   const tags = article.tags.map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
   let body = `<b>${escapeHtml(article.title)}</b>\n\n` + article.html
@@ -93,7 +115,13 @@ async function postFallback(call, chat_id, article, image) {
   let coverMsgId;
   if (image?.url) {
     try {
-      const r = await call('sendPhoto', { chat_id, photo: image.url });
+      const r = image.localPath && multipartCall
+        ? await multipartCall(
+          'sendPhoto',
+          { chat_id },
+          [{ field: 'photo', path: image.localPath, filename: image.filename, mediaType: image.mediaType }],
+        )
+        : await call('sendPhoto', { chat_id, photo: image.url });
       coverMsgId = r?.message_id;
     } catch (err) {
       log.warn(`Обложка (фолбэк) не отправилась (${err.message}) — публикую текст без картинки.`);

@@ -52,6 +52,10 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # Та же модель, что у «Нейробудней»: Claude Sonnet 5 через OpenRouter.
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER }}
+          OPENROUTER_IMAGE_MODEL: ${{ vars.OPENROUTER_IMAGE_MODEL }}
+          IMAGE_ASPECT_RATIO: ${{ vars.IMAGE_ASPECT_RATIO }}
+          IMAGE_RESOLUTION: ${{ vars.IMAGE_RESOLUTION }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           DACHA_SITE_URL: ${{ vars.DACHA_SITE_URL }}
           DACHA_TELEGRAM_BOT_TOKEN: ${{ secrets.DACHA_TELEGRAM_BOT_TOKEN }}

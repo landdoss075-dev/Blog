@@ -5,6 +5,7 @@ import { log } from '../src/log.js';
 import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
 import { generateArticle } from '../src/llm.js';
+import { generateCoverImage } from '../src/cover_image.js';
 import { fetchImages } from '../src/unsplash.js';
 import { postToTelegram } from '../src/telegram.js';
 import { publishToSite } from '../src/site.js';
@@ -50,12 +51,24 @@ async function main() {
     selectedAt: new Date().toISOString(),
   };
 
-  // 3. Картинки (обложка + иллюстрации в текст)
-  log.step('3/5 Подбор картинок (Unsplash)');
+  // 3. Картинки: обложка через Nano Banana/OpenRouter, inline — через Unsplash.
+  log.step('3/5 Подготовка картинок');
   const imageQueries = article.image_queries?.length ? article.image_queries : article.image_query;
-  const images = await fetchImages(imageQueries, 3, niche.imageFallbackQueries || []);
-  const image = images[0] || null;          // обложка
-  const inlineImages = images.slice(1);      // в текст статьи (для сайта/Дзена)
+  let image = null;
+  let inlineImages = [];
+  try {
+    image = await generateCoverImage(article, site, niche);
+  } catch (err) {
+    log.warn(`Обложка через OpenRouter не сгенерировалась (${err.message}) — беру обложку из Unsplash.`);
+  }
+  if (image) {
+    const inlineQueries = Array.isArray(imageQueries) ? imageQueries.slice(1) : imageQueries;
+    inlineImages = await fetchImages(inlineQueries, 2, niche.imageFallbackQueries || []);
+  } else {
+    const images = await fetchImages(imageQueries, 3, niche.imageFallbackQueries || []);
+    image = images[0] || null;              // обложка
+    inlineImages = images.slice(1);          // в текст статьи (для сайта/Дзена)
+  }
 
   // Dry-run: сохраняем результат в out/ и выходим
   if (config.dryRun) {

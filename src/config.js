@@ -33,6 +33,14 @@ export const config = {
     model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5',
   },
 
+  image: {
+    provider: (process.env.IMAGE_PROVIDER || 'unsplash').toLowerCase(),
+    openrouterModel: process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-image',
+    aspectRatio: process.env.IMAGE_ASPECT_RATIO || '16:9',
+    resolution: process.env.IMAGE_RESOLUTION || '1K',
+    outputFormat: process.env.IMAGE_OUTPUT_FORMAT || 'jpeg',
+  },
+
   unsplash: {
     accessKey: process.env.UNSPLASH_ACCESS_KEY || '',
   },
@@ -86,5 +94,8 @@ export function assertRequired() {
   }
   if (config.provider === 'openrouter' && !config.openrouter.apiKey) {
     throw new Error('PROVIDER=openrouter, но не задан OPENROUTER_API_KEY.');
+  }
+  if (config.image.provider === 'openrouter' && !config.openrouter.apiKey) {
+    throw new Error('IMAGE_PROVIDER=openrouter, но не задан OPENROUTER_API_KEY.');
   }
 }
