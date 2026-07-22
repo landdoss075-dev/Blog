@@ -121,7 +121,7 @@ export async function publishToSite(article, image, inlineImages = [], site) {
     html: insertInlineImages(article.html, inlineImages),
     excerpt: toPlainText(article.html).slice(0, 220),
     tags: article.tags || [],
-    image: image?.url ? { url: image.url, author: image.author || '' } : null,
+    image: image?.url ? { url: image.url, author: image.author || '', type: image.mediaType || image.type || 'image/jpeg' } : null,
     source: article.source || null,
     date,
     url,
@@ -335,8 +335,9 @@ function renderRss(posts, site) {
   const items = posts
     .map((p) => {
       const fullText = toPlainText(rssArticleHtml(p.html));
+      const imageType = p.image?.type || 'image/jpeg';
       const enclosure = p.image
-        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="image/jpeg" length="0"/>` +
+        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}" length="0"/>` +
           `\n      <media:content url="${xmlEscape(p.image.url)}" medium="image"/>`
         : '';
       const cats = p.tags.map((t) => `\n      <category>${xmlEscape(t)}</category>`).join('');
