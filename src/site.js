@@ -330,15 +330,27 @@ function renderRobots(site) {
   return `User-agent: *\nAllow: /\nSitemap: ${site.url}/sitemap.xml\n`;
 }
 
+const RSS_FRESH_DAYS = Number(process.env.RSS_FRESH_DAYS || 7);
+const RSS_FRESH_WINDOW_MS = RSS_FRESH_DAYS * 24 * 60 * 60 * 1000;
+
+function rssPosts(posts) {
+  const now = Date.now();
+  const fresh = posts.filter((p) => {
+    const ts = Date.parse(p.date);
+    return !Number.isNaN(ts) && now - ts <= RSS_FRESH_WINDOW_MS;
+  });
+  return fresh.length ? fresh : posts.slice(0, 1);
+}
+
 /** RSS-лента по требованиям Яндекс Дзена: чистый yandex:full-text + отдельные media-теги. */
-function renderRss(posts, site) {
-  const items = posts
+export function renderRss(posts, site) {
+  const items = rssPosts(posts)
     .map((p) => {
       const fullText = toPlainText(rssArticleHtml(p.html));
       const imageType = p.image?.type || 'image/jpeg';
       const enclosure = p.image
-        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}" length="0"/>` +
-          `\n      <media:content url="${xmlEscape(p.image.url)}" medium="image"/>`
+        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}"/>` +
+          `\n      <media:group><media:content url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}" medium="image"/></media:group>`
         : '';
       const cats = p.tags.map((t) => `\n      <category>${xmlEscape(t)}</category>`).join('');
       return `    <item>

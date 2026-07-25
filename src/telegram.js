@@ -71,8 +71,7 @@ export async function postToTelegram(article, image, tg) {
   const hasImage = Boolean(image?.url);
 
   if (image?.localPath) {
-    log.info('Обложка локальная — отправляю в Telegram загрузкой файла.');
-    return postFallback(call, chat_id, article, image, multipartCall);
+    return postLocalCoverAndRich(call, multipartCall, chat_id, article, image);
   }
 
   // Один Rich-пост: обложка (media[] по URL) + оформленная статья. При ошибке
@@ -92,12 +91,40 @@ export async function postToTelegram(article, image, tg) {
   }
 }
 
+async function uploadLocalCover(multipartCall, chat_id, image) {
+  const r = await multipartCall(
+    'sendPhoto',
+    { chat_id },
+    [{ field: 'photo', path: image.localPath, filename: image.filename, mediaType: image.mediaType }],
+  );
+  return r?.message_id;
+}
+
+async function postLocalCoverAndRich(call, multipartCall, chat_id, article, image) {
+  let coverMsgId;
+  try {
+    log.info('Обложка локальная — отправляю в Telegram загрузкой файла.');
+    coverMsgId = await uploadLocalCover(multipartCall, chat_id, image);
+  } catch (err) {
+    log.warn(`Локальная обложка не отправилась (${err.message}) — продолжаю с Rich-статьёй без обложки.`);
+  }
+
+  try {
+    const r = await call('sendRichMessage', { chat_id, rich_message: { html: buildRichHtml(article, false) } });
+    log.ok(`Опубликовано в Telegram (локальная обложка + Rich ${r?.message_id})`);
+    return { skipped: false, messageId: coverMsgId ?? r?.message_id, lastId: r?.message_id, coverMessageId: coverMsgId, rich: true, localCover: true };
+  } catch (err) {
+    log.warn(`sendRichMessage без обложки недоступен (${err.message}) — фолбэк на обычный HTML-текст.`);
+    return postFallback(call, chat_id, article, null, multipartCall, coverMsgId);
+  }
+}
+
 /**
  * Фолбэк, если Rich-сообщение недоступно: обычный пост — голая обложка (если есть) +
  * тело статьи HTML-текстом, разбитое по лимиту Telegram (4096 симв.).
  * Telegram HTML не знает h2/ul/li — переводим заголовки в <b>, пункты в строки с «•».
  */
-async function postFallback(call, chat_id, article, image, multipartCall = null) {
+async function postFallback(call, chat_id, article, image, multipartCall = null, existingCoverMsgId = null) {
   const MSG_LIMIT = 4096;
   const tags = article.tags.map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
   let body = `<b>${escapeHtml(article.title)}</b>\n\n` + article.html
@@ -112,7 +139,7 @@ async function postFallback(call, chat_id, article, image, multipartCall = null)
     .trim();
   if (tags) body += `\n\n${tags}`;
 
-  let coverMsgId;
+  let coverMsgId = existingCoverMsgId;
   if (image?.url) {
     try {
       const r = image.localPath && multipartCall

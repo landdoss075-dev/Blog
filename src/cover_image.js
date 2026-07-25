@@ -18,32 +18,115 @@ function extFromMedia(mediaType = '', fallback = 'jpg') {
   return EXT_BY_MEDIA[String(mediaType).toLowerCase()] || fallback;
 }
 
-function nicheScene(niche) {
+function hashSeed(text = '') {
+  let h = 2166136261;
+  for (const ch of text) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function pickVariant(list, seed, offset = 0) {
+  return list[(seed + offset) % list.length];
+}
+
+function coverDirections(article, niche) {
+  const seed = hashSeed(`${niche?.key || 'default'}:${article.title}:${(article.tags || []).join(',')}`);
   const scenes = {
-    ai: 'ordinary Russian home office, phone and laptop nearby, warm daylight, practical technology mood',
-    dacha: 'real Russian dacha garden, greenhouse, beds, tools, warm natural daylight',
-    finance: 'Russian kitchen table, wallet, coins, calculator, family budget atmosphere',
-    family: 'cozy Russian apartment kitchen or living room, calm family conversation, warm daylight',
-    pets: 'home interior with a cat or dog, cozy everyday pet owner atmosphere',
-    nostalgia: 'old Russian apartment interior, retro household objects, warm nostalgic daylight',
+    ai: [
+      'a person at a small kitchen table with a closed laptop and phone nearby',
+      'hands holding a smartphone near a window, laptop closed on the table',
+      'a modest home office desk with coffee, glasses, notebook closed, and soft daylight',
+      'a student workspace with backpack, desk lamp, and phone face down',
+      'a person thinking at a desk, technology present but screens not visible',
+      'a quiet evening apartment scene with phone, mug, and paperwork turned blank-side down',
+    ],
+    dacha: [
+      'hands planting seedlings in a real Russian dacha garden bed',
+      'a greenhouse with tomatoes and cucumbers, tools on soil, no packaging',
+      'fresh vegetables in a basket near garden beds and watering can',
+      'an older gardener checking leaves in a small greenhouse',
+      'a dacha path between beds with herbs, carrots, onions, and simple tools',
+      'a summer garden table with harvested vegetables, jars without labels, and natural light',
+    ],
+    finance: [
+      'a pensioner at a Russian kitchen table with coins, wallet, and calculator',
+      'hands sorting coins and cash envelopes on a plain table',
+      'a family budget scene with tea cups, wallet, calculator, no bills or documents',
+      'an older couple discussing expenses in a modest kitchen',
+      'close-up of coins, glasses, calculator, and a plain notebook turned closed',
+      'a shopping basket with groceries, wallet, and coins on a kitchen table',
+    ],
+    family: [
+      'two relatives talking quietly at a kitchen table in a Russian apartment',
+      'a mother and adult child sitting near a window with tea cups',
+      'a family living room scene with distance and silence in body language',
+      'a calm conversation on a sofa, warm daylight, no screens',
+      'hands around tea cups on a kitchen table, emotional everyday atmosphere',
+      'a hallway moment between generations, coats and house slippers, realistic apartment',
+    ],
+    pets: [
+      'a cat resting on a person’s lap in a cozy Russian apartment',
+      'a dog near the doorway with leash and owner’s shoes, no labels',
+      'a pet owner sitting on a sofa with a cat nearby, quiet mood',
+      'close-up of a cat near a window with food bowl in the background',
+      'a dog toy on the floor and a pet owner reaching down, warm home light',
+      'a rescued cat hiding partly under a chair in a lived-in apartment',
+    ],
+    nostalgia: [
+      'a polished Soviet wall unit with cups, lace cloth, and warm afternoon light',
+      'retro apartment corner with armchair, floor lamp, and old radio',
+      'hands opening a wooden cabinet drawer with household objects, no papers',
+      'old kitchen table with enamel kettle, faceted glasses, and sunlight',
+      'a room with vintage wallpaper, carpet, houseplants, and family photo frames',
+      'retro household objects on a sideboard, warm nostalgic Russian apartment mood',
+    ],
   };
-  return scenes[niche?.key] || 'realistic everyday Russian home atmosphere';
+  const compositions = [
+    'medium shot with one clear human action',
+    'close-up still life with hands and objects',
+    'wide environmental shot with strong foreground subject',
+    'over-the-shoulder documentary photo, screen not visible',
+    'low angle near table or garden bed, natural perspective',
+    'quiet cinematic side light with negative space for article cropping',
+  ];
+  const lighting = [
+    'soft morning daylight',
+    'warm evening light',
+    'overcast natural light',
+    'sunlight through a window',
+    'gentle golden hour light',
+    'realistic indoor ambient light',
+  ];
+
+  const list = scenes[niche?.key] || ['realistic everyday Russian home atmosphere'];
+  return {
+    scene: pickVariant(list, seed),
+    composition: pickVariant(compositions, seed, 3),
+    lighting: pickVariant(lighting, seed, 7),
+  };
 }
 
 function buildCoverPrompt(article, niche) {
   const excerpt = toPlainText(article.html).slice(0, 280);
   const tags = (article.tags || []).slice(0, 4).join(', ');
+  const direction = coverDirections(article, niche);
   return `Photorealistic editorial cover image for a Russian-language Dzen article.
 
 Article title: ${article.title}
 Article excerpt: ${excerpt}
 Topic tags: ${tags}
 
-Scene direction: ${nicheScene(niche)}.
+Scene direction: ${direction.scene}.
+Composition: ${direction.composition}.
+Lighting: ${direction.lighting}.
 
 Strict visual requirements:
 - 16:9 horizontal cover, clear main subject, strong click-worthy composition.
 - Realistic everyday Russian / Eastern European atmosphere, not glossy American stock.
+- Make this cover visually distinct from a generic stock image for the same niche: vary location,
+  foreground object, camera angle, age/body language of people, and emotional tone according to the article.
 - Natural light, human, warm, believable, emotionally clear.
 - No text, no letters, no words, no captions, no logos, no brand marks.
 - No UI screens, no readable phone screens, no documents, no receipts, no newspapers, no posters, no signs.
