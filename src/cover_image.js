@@ -35,52 +35,52 @@ function coverDirections(article, niche) {
   const seed = hashSeed(`${niche?.key || 'default'}:${article.title}:${(article.tags || []).join(',')}`);
   const scenes = {
     ai: [
-      'a person at a small kitchen table with a closed laptop and phone nearby',
-      'hands holding a smartphone near a window, laptop closed on the table',
-      'a modest home office desk with coffee, glasses, notebook closed, and soft daylight',
-      'a student workspace with backpack, desk lamp, and phone face down',
-      'a person thinking at a desk, technology present but screens not visible',
-      'a quiet evening apartment scene with phone, mug, and paperwork turned blank-side down',
+      'the exact everyday object, action, or digital risk named in the article title, shown in a believable Russian home',
+      'a close visual consequence of the exact AI task in the title, using physical objects while all screens remain unreadable',
+      'the precise phone, photograph, parcel, document, or household task from the article as the unmistakable main subject',
+      'one person reacting naturally to the exact practical situation in the title, without a generic laptop-work scene',
+      'a documentary-style moment immediately before the decision or check described in the article',
+      'the article’s specific real-world problem represented by one clear foreground object and a restrained human reaction',
     ],
     dacha: [
-      'hands planting seedlings in a real Russian dacha garden bed',
-      'a greenhouse with tomatoes and cucumbers, tools on soil, no packaging',
-      'fresh vegetables in a basket near garden beds and watering can',
-      'an older gardener checking leaves in a small greenhouse',
-      'a dacha path between beds with herbs, carrots, onions, and simple tools',
-      'a summer garden table with harvested vegetables, jars without labels, and natural light',
+      'the exact plant and visible symptom named in the article, photographed close enough to inspect in a real Russian dacha',
+      'the precise seasonal garden action from the title, with the correct plant, simple tools, soil, and weather conditions',
+      'a gardener’s hands performing the exact safe task described in the article, with the plant as the main subject',
+      'the exact garden bed, shrub, greenhouse crop, or stored harvest from the article, showing the practical problem clearly',
+      'a before-action documentary scene focused on the title’s specific plant condition, not a generic abundant harvest',
+      'the concrete result a gardener needs to assess in this article, with seasonally accurate vegetation and modest surroundings',
     ],
     finance: [
-      'a pensioner at a Russian kitchen table with coins, wallet, and calculator',
-      'hands sorting coins and cash envelopes on a plain table',
-      'a family budget scene with tea cups, wallet, calculator, no bills or documents',
-      'an older couple discussing expenses in a modest kitchen',
-      'close-up of coins, glasses, calculator, and a plain notebook turned closed',
-      'a shopping basket with groceries, wallet, and coins on a kitchen table',
+      'the exact household payment, benefit, utility bill, pension, or document-check situation named in the title',
+      'hands comparing the specific payment situation from the article using a calculator and unreadable paperwork',
+      'an adult reader checking the exact benefit or household charge from the title in a modest Russian apartment',
+      'the concrete money concern from the article shown through relevant objects, with no generic cash pile or luxury cues',
+      'a close-up of the exact bill, wallet, calculator, glasses, or application context needed by the title, all text unreadable',
+      'a calm consultation-like home scene centered on the article’s specific payment or document problem',
     ],
     family: [
-      'two relatives talking quietly at a kitchen table in a Russian apartment',
-      'a mother and adult child sitting near a window with tea cups',
-      'a family living room scene with distance and silence in body language',
-      'a calm conversation on a sofa, warm daylight, no screens',
-      'hands around tea cups on a kitchen table, emotional everyday atmosphere',
-      'a hallway moment between generations, coats and house slippers, realistic apartment',
+      'the exact family relationship and emotional situation named in the article, shown through natural body language',
+      'a believable domestic moment immediately before the conversation or decision described in the title',
+      'the precise household conflict, distance, support, or reconciliation from the article in a Russian apartment',
+      'two or three relatives of the appropriate ages in the exact setting implied by the title, without theatrical posing',
+      'a close human detail from the article’s family scene, using hands, posture, distance, and relevant household objects',
+      'the article’s central emotional turning point shown quietly and realistically, without melodrama',
     ],
     pets: [
-      'a cat resting on a person’s lap in a cozy Russian apartment',
-      'a dog near the doorway with leash and owner’s shoes, no labels',
-      'a pet owner sitting on a sofa with a cat nearby, quiet mood',
-      'close-up of a cat near a window with food bowl in the background',
-      'a dog toy on the floor and a pet owner reaching down, warm home light',
-      'a rescued cat hiding partly under a chair in a lived-in apartment',
+      'the exact cat or dog behavior named in the article, captured naturally in the specific home location from the title',
+      'a close documentary view of the pet’s precise action, posture, and nearby object that the article asks the owner to notice',
+      'the exact interaction between pet, owner, bowl, litter box, carrier, toy, doorway, or leash described in the article',
+      'the household environment behind the behavior in the title, with the animal clearly visible and no exaggerated expression',
+      'the moment just before the owner changes the exact routine or object discussed in the article',
+      'a realistic pet-level camera view showing the article’s central behavior and relevant room layout',
     ],
     nostalgia: [
-      'a polished Soviet wall unit with cups, lace cloth, and warm afternoon light',
-      'retro apartment corner with armchair, floor lamp, and old radio',
-      'hands opening a wooden cabinet drawer with household objects, no papers',
-      'old kitchen table with enamel kettle, faceted glasses, and sunlight',
-      'a room with vintage wallpaper, carpet, houseplants, and family photo frames',
-      'retro household objects on a sideboard, warm nostalgic Russian apartment mood',
+      'the exact household object named in the article, historically plausible for the stated decade and shown as the clear main subject',
+      'hands using the precise old object or performing the exact domestic ritual from the title in an authentic apartment interior',
+      'a close still life of the article’s specific object with only the few period-correct items needed to explain its everyday role',
+      'the exact kitchen, hallway, courtyard, shop, or train ritual from the article, without mixing decades or adding random antiques',
+      'a documentary-style domestic scene centered on the title’s object as it was actually stored, repaired, carried, or reused',
+      'the article’s precise sensory memory represented by one period-correct object, believable wear, and restrained surroundings',
     ],
   };
   const compositions = [
@@ -129,7 +129,8 @@ Strict visual requirements:
   foreground object, camera angle, age/body language of people, and emotional tone according to the article.
 - Natural light, human, warm, believable, emotionally clear.
 - No text, no letters, no words, no captions, no logos, no brand marks.
-- No UI screens, no readable phone screens, no documents, no receipts, no newspapers, no posters, no signs.
+- No legible UI screens, phone screens, documents, receipts, newspapers, posters, or signs.
+  Relevant paper may appear only when the article requires it, with all text fully unreadable and no personal data.
 - Do not include surreal elements, infographics, icons, charts, typography, watermarks, or borders.
 - Image must work as the first cover of an online article and be safe for a broad audience.`;
 }

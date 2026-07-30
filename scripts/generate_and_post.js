@@ -49,6 +49,7 @@ async function main() {
     headline: topic.headline,
     headlines: topic.headlines || [],
     trendKeywords: topic.trendKeywords || [],
+    topicOrigin: topic.topicOrigin || 'news',
     selectedAt: new Date().toISOString(),
   };
 
