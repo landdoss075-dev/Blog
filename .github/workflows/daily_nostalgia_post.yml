@@ -1,10 +1,9 @@
 name: Daily Nostalgia Post
 
 on:
-  # 1 раз в день: 10:00 МСК (07:00 UTC).
+  # GitHub cron отключён из-за задержек. FinMicro вызывает workflow_dispatch
+  # ежедневно в 07:25 UTC (10:25 МСК).
   # Публикация: Telegram «Как жили раньше» + сайт/RSS kak-zhili-ranshe.ru.
-  schedule:
-    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

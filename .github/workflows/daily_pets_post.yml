@@ -1,10 +1,9 @@
 name: Daily Pets Post
 
 on:
-  # 1 раз в день: 10:00 МСК (07:00 UTC).
+  # GitHub cron отключён из-за задержек. FinMicro вызывает workflow_dispatch
+  # ежедневно в 07:20 UTC (10:20 МСК).
   # Публикация: Telegram «Питомцы в будни» + сайт/RSS pitomcy-budni.ru.
-  schedule:
-    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

@@ -1,10 +1,9 @@
 name: Daily Family Post
 
 on:
-  # 1 раз в день: 10:00 МСК (07:00 UTC).
+  # GitHub cron отключён из-за задержек. FinMicro вызывает workflow_dispatch
+  # ежедневно в 07:15 UTC (10:15 МСК).
   # Публикация: Telegram «Семейные будни» + сайт/RSS semeynye-budni.ru.
-  schedule:
-    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
