@@ -32,6 +32,7 @@ async function main() {
   const topic = await fetchTopic(niche);
   // Прокидываем в topic всё нишевое, что нужно генерации: голос автора, «про что», CTA.
   topic.persona = niche.persona;
+  topic.editorialVoice = niche.editorialVoice === true;
   topic.topicLabel = niche.topicLabel;
   topic.promptFormats = niche.promptFormats || [];
   topic.titleStyles = niche.titleStyles || [];
