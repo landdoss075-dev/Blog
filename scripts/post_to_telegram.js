@@ -101,7 +101,10 @@ async function main() {
     log.ok('DRY — не отправляю. Проверь заголовок/обложку выше.');
     return;
   }
-  const r = await postToTelegram(article, image);
+  const r = await postToTelegram(article, image, {
+    botToken: config.telegram.botToken,
+    channelId: chatId,
+  });
   if (r.skipped) log.warn('Пропущено (нет токена/канала).');
   else log.ok(`Опубликовано: message_id ${r.messageId}${r.rich ? ' (Rich с обложкой)' : ' (фолбэк)'}`);
 }

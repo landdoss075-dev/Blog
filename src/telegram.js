@@ -3,11 +3,12 @@ import { log } from './log.js';
 
 const API = (botToken, method) => `https://api.telegram.org/bot${botToken}/${method}`;
 
-/** Rich-сообщение вмещает до 32768 символов (Bot API 10.1). */
+/** Rich-сообщение вмещает до 32768 символов (Bot API 10.2). */
 const RICH_LIMIT = 32768;
 
 /** Идентификатор обложки внутри Rich-сообщения (связывает <img> и media[]). */
 const COVER_ID = 'cover';
+const COVER_FILE_FIELD = 'cover_file';
 
 /**
  * Тело статьи для Rich-сообщения: article.html уже валиден (санитайзер оставляет
@@ -17,7 +18,7 @@ const COVER_ID = 'cover';
  * один цельный пост: картинка + оформленная статья.
  */
 function buildRichHtml(article, withCover) {
-  const tags = article.tags.map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
+  const tags = (article.tags || []).map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
   let html = withCover ? `<img src="tg://photo?id=${COVER_ID}">` : '';
   html += `<h1>${escapeHtml(article.title)}</h1>${article.html}`;
   if (tags) html += `<p>${escapeHtml(tags)}</p>`;
@@ -40,7 +41,8 @@ async function tgCall(botToken, method, payload) {
 async function tgMultipartCall(botToken, method, fields, files) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined && value !== null) form.set(key, String(value));
+    if (value === undefined || value === null) continue;
+    form.set(key, typeof value === 'string' ? value : JSON.stringify(value));
   }
   for (const file of files) {
     const bytes = await readFile(file.path);
@@ -54,9 +56,9 @@ async function tgMultipartCall(botToken, method, fields, files) {
 
 /**
  * Публикует пост в Telegram-канал ОДНИМ Rich-сообщением: обложка сверху + оформленная
- * статья (sendRichMessage, Bot API 10.1). Картинка встраивается через media[] по URL
- * (Telegram сам скачивает по HTTP-ссылке — file_id не нужен).
- * Если Rich-сообщение недоступно/упало — фолбэк на прежний путь (фото + обычный текст).
+ * статья (sendRichMessage, Bot API 10.2). Удалённая картинка передаётся через URL,
+ * локальная — multipart-вложением attach://cover_file внутри того же Rich-сообщения.
+ * При ошибке Rich-сообщения с обложкой не публикуем раздельные фото и текст.
  *
  * `tg` — таргет ниши: { botToken, channelId }. Если не заданы — мягко пропускает.
  */
@@ -68,14 +70,13 @@ export async function postToTelegram(article, image, tg) {
   const call = (method, payload) => tgCall(tg.botToken, method, payload);
   const multipartCall = (method, fields, files) => tgMultipartCall(tg.botToken, method, fields, files);
   const chat_id = tg.channelId;
-  const hasImage = Boolean(image?.url);
+  const hasImage = Boolean(image?.url || image?.localPath);
 
   if (image?.localPath) {
-    return postLocalCoverAndRich(call, multipartCall, chat_id, article, image);
+    return postLocalCoverAndRich(multipartCall, chat_id, article, image);
   }
 
-  // Один Rich-пост: обложка (media[] по URL) + оформленная статья. При ошибке
-  // (фича сырая / клиент не поддерживает) не роняем публикацию — фолбэк на фото+текст.
+  // Один Rich-пост: обложка (media[] по URL) + оформленная статья.
   const rich_message = { html: buildRichHtml(article, hasImage) };
   if (hasImage) {
     rich_message.media = [{ id: COVER_ID, media: { type: 'photo', media: image.url } }];
@@ -86,47 +87,48 @@ export async function postToTelegram(article, image, tg) {
     log.ok(`Опубликовано в Telegram (Rich ${r?.message_id}${hasImage ? ' с обложкой' : ''})`);
     return { skipped: false, messageId: r?.message_id, rich: true };
   } catch (err) {
-    log.warn(`sendRichMessage недоступен (${err.message}) — фолбэк на фото + обычный текст.`);
-    return postFallback(call, chat_id, article, image, multipartCall);
-  }
-}
-
-async function uploadLocalCover(multipartCall, chat_id, image) {
-  const r = await multipartCall(
-    'sendPhoto',
-    { chat_id },
-    [{ field: 'photo', path: image.localPath, filename: image.filename, mediaType: image.mediaType }],
-  );
-  return r?.message_id;
-}
-
-async function postLocalCoverAndRich(call, multipartCall, chat_id, article, image) {
-  let coverMsgId;
-  try {
-    log.info('Обложка локальная — отправляю в Telegram загрузкой файла.');
-    coverMsgId = await uploadLocalCover(multipartCall, chat_id, image);
-  } catch (err) {
-    log.warn(`Локальная обложка не отправилась (${err.message}) — продолжаю с Rich-статьёй без обложки.`);
-  }
-
-  try {
-    const r = await call('sendRichMessage', { chat_id, rich_message: { html: buildRichHtml(article, false) } });
-    log.ok(`Опубликовано в Telegram (локальная обложка + Rich ${r?.message_id})`);
-    return { skipped: false, messageId: coverMsgId ?? r?.message_id, lastId: r?.message_id, coverMessageId: coverMsgId, rich: true, localCover: true };
-  } catch (err) {
+    if (hasImage) {
+      throw new Error(`Единый Telegram Rich-пост с обложкой не отправлен: ${err.message}`);
+    }
     log.warn(`sendRichMessage без обложки недоступен (${err.message}) — фолбэк на обычный HTML-текст.`);
-    return postFallback(call, chat_id, article, null, multipartCall, coverMsgId);
+    return postFallback(call, chat_id, article);
+  }
+}
+
+async function postLocalCoverAndRich(multipartCall, chat_id, article, image) {
+  const rich_message = {
+    html: buildRichHtml(article, true),
+    media: [{
+      id: COVER_ID,
+      media: { type: 'photo', media: `attach://${COVER_FILE_FIELD}` },
+    }],
+  };
+
+  try {
+    const r = await multipartCall(
+      'sendRichMessage',
+      { chat_id, rich_message },
+      [{
+        field: COVER_FILE_FIELD,
+        path: image.localPath,
+        filename: image.filename,
+        mediaType: image.mediaType,
+      }],
+    );
+    log.ok(`Опубликовано в Telegram (единый Rich ${r?.message_id} с локальной обложкой)`);
+    return { skipped: false, messageId: r?.message_id, rich: true, localCover: true };
+  } catch (err) {
+    throw new Error(`Единый Telegram Rich-пост с локальной обложкой не отправлен: ${err.message}`);
   }
 }
 
 /**
- * Фолбэк, если Rich-сообщение недоступно: обычный пост — голая обложка (если есть) +
- * тело статьи HTML-текстом, разбитое по лимиту Telegram (4096 симв.).
+ * Фолбэк только для статьи без обложки: тело статьи HTML-текстом по лимиту Telegram.
  * Telegram HTML не знает h2/ul/li — переводим заголовки в <b>, пункты в строки с «•».
  */
-async function postFallback(call, chat_id, article, image, multipartCall = null, existingCoverMsgId = null) {
+async function postFallback(call, chat_id, article) {
   const MSG_LIMIT = 4096;
-  const tags = article.tags.map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
+  const tags = (article.tags || []).map((t) => '#' + t.replace(/\s+/g, '_')).join(' ');
   let body = `<b>${escapeHtml(article.title)}</b>\n\n` + article.html
     .replace(/<h2[^>]*>/gi, '\n<b>').replace(/<\/h2>/gi, '</b>\n')
     .replace(/<h3[^>]*>/gi, '\n<b>').replace(/<\/h3>/gi, '</b>\n')
@@ -139,35 +141,15 @@ async function postFallback(call, chat_id, article, image, multipartCall = null,
     .trim();
   if (tags) body += `\n\n${tags}`;
 
-  let coverMsgId = existingCoverMsgId;
-  if (image?.url) {
-    try {
-      const r = image.localPath && multipartCall
-        ? await multipartCall(
-          'sendPhoto',
-          { chat_id },
-          [{ field: 'photo', path: image.localPath, filename: image.filename, mediaType: image.mediaType }],
-        )
-        : await call('sendPhoto', { chat_id, photo: image.url });
-      coverMsgId = r?.message_id;
-    } catch (err) {
-      log.warn(`Обложка (фолбэк) не отправилась (${err.message}) — публикую текст без картинки.`);
-    }
-  }
   try {
-    let lastId = coverMsgId;
+    let lastId;
     for (let i = 0; i < body.length; i += MSG_LIMIT) {
       const r = await call('sendMessage', { chat_id, text: body.slice(i, i + MSG_LIMIT), parse_mode: 'HTML' });
       lastId = r?.message_id;
     }
-    log.ok(`Опубликовано в Telegram (фолбэк: ${coverMsgId ? 'обложка + ' : ''}текст)`);
-    return { skipped: false, messageId: coverMsgId ?? lastId, lastId, rich: false, fallback: true };
+    log.ok('Опубликовано в Telegram (фолбэк: текст без обложки)');
+    return { skipped: false, messageId: lastId, lastId, rich: false, fallback: true };
   } catch (err) {
-    // Если и текст не ушёл, но обложка отправилась — пост частично состоялся.
-    if (coverMsgId) {
-      log.warn(`Фолбэк тела не удался (${err.message}); обложка опубликована.`);
-      return { skipped: false, messageId: coverMsgId, rich: false, bodyError: err.message };
-    }
     throw new Error(`Telegram фолбэк: ${err.message}`);
   }
 }
