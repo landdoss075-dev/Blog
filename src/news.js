@@ -76,6 +76,11 @@ function editorialTopicPool(niche, now = new Date()) {
   return [...seasonal, ...(niche.editorialTopics || [])].filter(Boolean);
 }
 
+function editorialTopicText(topic) {
+  if (typeof topic === 'string') return topic;
+  return topic?.theme || topic?.title || '';
+}
+
 function topicDiversityGroup(text, groups = []) {
   const normalized = normalize(text);
   const words = normalized.split(' ');
@@ -89,29 +94,60 @@ function topicDiversityGroup(text, groups = []) {
   }))?.key || '';
 }
 
+function editorialTopicGroup(topic, niche) {
+  if (typeof topic === 'object' && topic?.group) return topic.group;
+  return topicDiversityGroup(editorialTopicText(topic), niche.topicDiversityGroups || []);
+}
+
+function scheduledEditorialGroup(niche, now) {
+  const schedule = niche.editorialSchedule || [];
+  if (!schedule.length) return '';
+  const mondayBasedDay = (now.getUTCDay() + 6) % 7;
+  return schedule[mondayBasedDay % schedule.length] || '';
+}
+
+function editorialCandidateWords(candidate, niche) {
+  const ignoredTerms = niche.editorialDedupeIgnoreTerms || [];
+  const ignored = (word) => ignoredTerms.some((term) => {
+    const raw = String(term);
+    const normalizedTerm = normalize(raw.replace(/\*$/, ''));
+    return raw.endsWith('*') ? word.startsWith(normalizedTerm) : word === normalizedTerm;
+  });
+  return normalize(editorialTopicText(candidate))
+    .split(' ')
+    .filter((word) => word.length >= 6 && !ignored(word))
+    .map(stem);
+}
+
 export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
   const pool = editorialTopicPool(niche, now);
-  const candidates = pool.length ? pool : niche.newsQueries;
+  const fallbackCandidates = pool.length ? pool : niche.newsQueries;
+  const scheduledGroup = scheduledEditorialGroup(niche, now);
+  const scheduledCandidates = scheduledGroup
+    ? fallbackCandidates.filter((candidate) => editorialTopicGroup(candidate, niche) === scheduledGroup)
+    : [];
+  const candidates = scheduledCandidates.length ? scheduledCandidates : fallbackCandidates;
   const diversityGroups = niche.topicDiversityGroups || [];
   const recentText = recentPosts
     .slice(0, 18)
     .map((post) => `${post.title || ''} ${post.source?.headline || ''}`.toLowerCase())
     .join(' ');
+  const recentWordStems = new Set(normalize(recentText).split(' ').filter(Boolean).map(stem));
   const dayIndex = Math.floor(now.getTime() / 86400000);
 
   if (diversityGroups.length) {
     const recentGroupCounts = new Map();
     for (const post of recentPosts.slice(0, niche.topicDiversityWindow || 5)) {
       const text = `${post.title || ''} ${post.source?.headline || ''}`;
-      const group = topicDiversityGroup(text, diversityGroups);
+      const group = post.source?.topicGroup || topicDiversityGroup(text, diversityGroups);
       if (group) recentGroupCounts.set(group, (recentGroupCounts.get(group) || 0) + 1);
     }
 
     const rotated = candidates.map((_, offset) => candidates[(dayIndex + offset) % candidates.length]);
     const ranked = rotated.map((candidate, rotationIndex) => {
-      const words = normalize(candidate).split(' ').filter((word) => word.length >= 6);
-      const repeatedWords = words.filter((word) => recentText.includes(word)).length;
-      const group = topicDiversityGroup(candidate, diversityGroups);
+      const words = editorialCandidateWords(candidate, niche);
+      const repeatedWords = words.filter((word) => recentWordStems.has(word)).length;
+      const group = editorialTopicGroup(candidate, niche);
       return {
         candidate,
         rotationIndex,
@@ -130,19 +166,48 @@ export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
 
   for (let offset = 0; offset < candidates.length; offset++) {
     const candidate = candidates[(dayIndex + offset) % candidates.length];
-    const words = normalize(candidate).split(' ').filter((word) => word.length >= 6);
-    if (!words.length || words.filter((word) => recentText.includes(word)).length < 2) return candidate;
+    const words = editorialCandidateWords(candidate, niche);
+    const repeatedWords = words.filter((word) => recentWordStems.has(word)).length;
+    const maxRepeatedWords = niche.editorialMaxRepeatedWords ?? 1;
+    if (!words.length || repeatedWords <= maxRepeatedWords) return candidate;
   }
-  return candidates[dayIndex % candidates.length];
+
+  const recentExactTopics = new Set(recentPosts.flatMap((post) => [
+    normalize(post.title || ''),
+    normalize(post.source?.headline || ''),
+    normalize(post.source?.theme || ''),
+  ]).filter(Boolean));
+  const rotated = candidates.map((_, offset) => candidates[(dayIndex + offset) % candidates.length]);
+  const ranked = rotated.map((candidate, rotationIndex) => {
+    const candidateText = editorialTopicText(candidate);
+    const words = editorialCandidateWords(candidate, niche);
+    return {
+      candidate,
+      rotationIndex,
+      repeatedWords: words.filter((word) => recentWordStems.has(word)).length,
+      exactRepeat: recentExactTopics.has(normalize(candidateText)) ? 1 : 0,
+    };
+  });
+  ranked.sort((a, b) =>
+    a.exactRepeat - b.exactRepeat
+    || a.repeatedWords - b.repeatedWords
+    || a.rotationIndex - b.rotationIndex
+  );
+  return ranked[0].candidate;
 }
 
 function editorialTopicResult(niche, recentPosts, now = new Date()) {
   const topic = pickEditorialTopic(niche, recentPosts, now);
+  const theme = editorialTopicText(topic);
   return {
-    theme: topic,
-    headline: topic,
-    headlines: [topic],
+    theme,
+    headline: theme,
+    headlines: [theme],
     trendKeywords: [],
+    topicGroup: editorialTopicGroup(topic, niche),
+    topicIntent: typeof topic === 'object' ? topic.intent || '' : '',
+    editorialFormat: typeof topic === 'object' ? topic.format || '' : '',
+    editorialTitleStyle: typeof topic === 'object' ? topic.titleStyle || '' : '',
     recentTitles: recentPosts.map((post) => post.title).filter(Boolean),
     recentTopicHints: recentPosts
       .slice(0, 8)

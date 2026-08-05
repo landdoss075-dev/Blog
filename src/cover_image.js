@@ -33,15 +33,35 @@ function pickVariant(list, seed, offset = 0) {
 
 function coverDirections(article, niche) {
   const seed = hashSeed(`${niche?.key || 'default'}:${article.title}:${(article.tags || []).join(',')}`);
-  const scenes = {
-    ai: [
-      'the exact everyday object, action, or digital risk named in the article title, shown in a believable Russian home',
-      'a close visual consequence of the exact AI task in the title, using physical objects while all screens remain unreadable',
-      'the precise phone, photograph, parcel, document, or household task from the article as the unmistakable main subject',
-      'one person reacting naturally to the exact practical situation in the title, without a generic laptop-work scene',
-      'a documentary-style moment immediately before the decision or check described in the article',
-      'the article’s specific real-world problem represented by one clear foreground object and a restrained human reaction',
+  const aiGroup = article?.source?.topicGroup || 'practical';
+  const aiScenes = {
+    practical: [
+      'the exact everyday task from the article represented by one useful physical result and the objects needed to create it',
+      'hands organizing the article’s precise task at a clean table, with any phone or laptop screen turned away and unreadable',
+      'the finished practical outcome promised by the title, shown as a believable home or small-office action rather than generic computer work',
+      'one clear before-action moment from the task, centered on a familiar object with a purposeful human gesture',
     ],
+    search: [
+      'one large everyday object at the center of the reader’s exact question, photographed clearly with generous negative space',
+      'a calm explanatory still life built from the specific document, photograph, phone, or household object named in the title',
+      'the precise decision implied by the title shown through two or three physical objects, with no readable text or interface',
+      'a close documentary image of the object a reader needs to prepare or check before using an AI service',
+    ],
+    lab: [
+      'a clear side-by-side physical comparison of two approaches to the same simple task, with no labels or readable writing',
+      'two contrasting arrangements of the exact objects from the article, photographed from above as a practical experiment',
+      'a neutral tabletop test scene showing one variable changed between two otherwise similar setups',
+      'hands comparing two versions of the same everyday result, with all screens and paper text fully unreadable',
+    ],
+    safety: [
+      'the exact protective action from the title shown calmly through one phone, one familiar object, and a deliberate pause before acting',
+      'a high-contrast close-up of the article’s specific risk object with a clear safe human response and no threatening imagery',
+      'the moment a person verifies the exact request or file from the article using a trusted separate route, all interfaces unreadable',
+      'one clear foreground object representing the risk, balanced by a calm protective action rather than fear or panic',
+    ],
+  };
+  const scenes = {
+    ai: aiScenes[aiGroup] || aiScenes.practical,
     dacha: [
       'the exact plant and visible symptom named in the article, photographed close enough to inspect in a real Russian dacha',
       'the precise seasonal garden action from the title, with the correct plant, simple tools, soil, and weather conditions',
@@ -67,12 +87,12 @@ function coverDirections(article, niche) {
       'the article’s central emotional turning point shown quietly and realistically, without melodrama',
     ],
     pets: [
-      'the exact cat or dog behavior named in the article, captured naturally in the specific home location from the title',
+      'the exact domestic animal and behavior named in the article, captured naturally in the species-appropriate home environment',
       'a close documentary view of the pet’s precise action, posture, and nearby object that the article asks the owner to notice',
-      'the exact interaction between pet, owner, bowl, litter box, carrier, toy, doorway, or leash described in the article',
+      'the exact interaction between pet, owner, feeding area, enclosure, aquarium, resting place, toy, doorway, or leash described in the article',
       'the household environment behind the behavior in the title, with the animal clearly visible and no exaggerated expression',
       'the moment just before the owner changes the exact routine or object discussed in the article',
-      'a realistic pet-level camera view showing the article’s central behavior and relevant room layout',
+      'a realistic species-level camera view showing the article’s central behavior and relevant habitat layout',
     ],
     nostalgia: [
       'the exact household object named in the article, historically plausible for the stated decade and shown as the clear main subject',
@@ -99,12 +119,21 @@ function coverDirections(article, niche) {
     'gentle golden hour light',
     'realistic indoor ambient light',
   ];
+  const aiPalettes = {
+    practical: 'clean neutral colors with one fresh cyan or green accent, useful and optimistic rather than futuristic',
+    search: 'bright natural daylight, crisp object separation, restrained blue and warm neutral accents',
+    lab: 'balanced neutral studio daylight with two visually distinct object arrangements',
+    safety: 'clear high contrast with one restrained red accent, calm and protective rather than alarming',
+  };
 
   const list = scenes[niche?.key] || ['realistic everyday Russian home atmosphere'];
   return {
     scene: pickVariant(list, seed),
     composition: pickVariant(compositions, seed, 3),
     lighting: pickVariant(lighting, seed, 7),
+    palette: niche?.key === 'ai'
+      ? aiPalettes[aiGroup] || aiPalettes.practical
+      : 'natural, varied colors appropriate to the exact subject and season',
   };
 }
 
@@ -121,13 +150,14 @@ Topic tags: ${tags}
 Scene direction: ${direction.scene}.
 Composition: ${direction.composition}.
 Lighting: ${direction.lighting}.
+Color direction: ${direction.palette}.
 
 Strict visual requirements:
 - 16:9 horizontal cover, clear main subject, strong click-worthy composition.
 - Realistic everyday Russian / Eastern European atmosphere, not glossy American stock.
 - Make this cover visually distinct from a generic stock image for the same niche: vary location,
   foreground object, camera angle, age/body language of people, and emotional tone according to the article.
-- Natural light, human, warm, believable, emotionally clear.
+- Natural and believable, emotionally clear; vary color temperature according to the color direction.
 - No text, no letters, no words, no captions, no logos, no brand marks.
 - No legible UI screens, phone screens, documents, receipts, newspapers, posters, or signs.
   Relevant paper may appear only when the article requires it, with all text fully unreadable and no personal data.

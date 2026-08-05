@@ -11,7 +11,10 @@ const DEFAULT_PERSONA = 'Ты — опытный автор русскоязыч
  * Системный промпт под требования Дзена: живой язык, примеры, без шаблона.
  * Первая строка — «персона» (голос автора конкретной ниши), остальное — общие правила.
  */
-export function buildSystemPrompt(persona = DEFAULT_PERSONA, { editorialVoice = false } = {}) {
+export function buildSystemPrompt(
+  persona = DEFAULT_PERSONA,
+  { editorialVoice = false, minWords = 700, maxWords = 1100 } = {},
+) {
   const voiceRule = editorialVoice
     ? `- Пиши от лица редакции нейтрально и честно. Не изображай личный опыт, которого нет в исходных данных.
 - Если для объяснения нужна придуманная бытовая сцена, прямо назови её собирательным примером или смоделированной ситуацией.`
@@ -25,7 +28,7 @@ export function buildSystemPrompt(persona = DEFAULT_PERSONA, { editorialVoice = 
 Имена, суммы, даты, проценты и статистику добавляй только тогда, когда они есть в исходных данных.
 
 Жёсткие требования:
-- Объём основного текста: 700-1100 слов.
+- Объём основного текста: ${minWords}-${maxWords} слов.
 - ЗАВЕРШИ статью коротким вопросом к читателю (чтобы спровоцировать комментарии).
 - НИКОГДА не упоминай, что текст написан нейросетью или ИИ-ассистентом.
 ${voiceRule}
@@ -96,16 +99,22 @@ export function buildUserPrompt({
   promptFormats = FORMATS,
   titleStyles = TITLE_STYLES,
   promptGuidance = [],
+  topicGroup = '',
+  topicIntent = '',
+  editorialFormat = '',
+  editorialTitleStyle = '',
   topicOrigin = 'news',
   currentDate = new Date().toISOString().slice(0, 10),
 }) {
-  const format = pick(promptFormats.length ? promptFormats : FORMATS);
-  const titleStyle = pick(titleStyles.length ? titleStyles : TITLE_STYLES);
+  const format = editorialFormat || pick(promptFormats.length ? promptFormats : FORMATS);
+  const titleStyle = editorialTitleStyle || pick(titleStyles.length ? titleStyles : TITLE_STYLES);
   const guidance = promptGuidance.length
     ? `\nНИШЕВЫЕ ПРАВИЛА:\n${promptGuidance.map((rule) => `- ${rule}`).join('\n')}\n`
     : '';
   const topicContext = topicOrigin === 'editorial'
     ? `Редакционная тема дня: «${theme}».
+${topicGroup ? `Тип материала: ${topicGroup}.` : ''}
+${topicIntent ? `Задача материала: ${topicIntent}` : ''}
 Это не новость и не источник фактов. Раскрой тему как оригинальный полезный материал:
 - не придумывай исследование, событие, закон, личный опыт или статистику;
 - не вставляй искусственную фразу «я прочитал новость»;
@@ -164,7 +173,14 @@ ${recentTopicHints.length ? `\nЗАПРЕЩЁННЫЕ ПОВТОРЫ:\nЭти и
 /** Сообщения для chat-completions (формат одинаков у Groq и OpenAI). */
 export function buildMessages(topic) {
   return [
-    { role: 'system', content: buildSystemPrompt(topic.persona, { editorialVoice: topic.editorialVoice === true }) },
+    {
+      role: 'system',
+      content: buildSystemPrompt(topic.persona, {
+        editorialVoice: topic.editorialVoice === true,
+        minWords: topic.promptMinWords || 700,
+        maxWords: topic.maxWords || 1100,
+      }),
+    },
     { role: 'user', content: buildUserPrompt(topic) },
   ];
 }
@@ -433,12 +449,12 @@ function containsForbiddenTerm(text, terms = []) {
   return terms.find((term) => normalized.includes(String(term).toLowerCase()));
 }
 
-export function qualityIssue(article, { forbiddenTerms = [] } = {}) {
+export function qualityIssue(article, { forbiddenTerms = [], minWords = 650 } = {}) {
   if (!article.titleVariants || article.titleVariants.length < 2) {
     return `мало вариантов заголовка (${article.titleVariants?.length || 0}, нужно ≥2)`;
   }
-  if ((article.bodyWords || 0) < 650) {
-    return `тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥650)`;
+  if ((article.bodyWords || 0) < minWords) {
+    return `тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥${minWords})`;
   }
   const h2Count = (article.html.match(/<h2>/g) || []).length;
   if (h2Count < 2) {

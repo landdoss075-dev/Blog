@@ -38,6 +38,9 @@ async function main() {
   topic.titleStyles = niche.titleStyles || [];
   topic.promptGuidance = niche.promptGuidance || [];
   topic.forbiddenTerms = niche.forbiddenTerms || [];
+  topic.minWords = niche.minWords || 650;
+  topic.promptMinWords = niche.promptMinWords || 700;
+  topic.maxWords = niche.maxWords || 1100;
   topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
 
   // 2. Генерация статьи
@@ -50,6 +53,7 @@ async function main() {
     headlines: topic.headlines || [],
     trendKeywords: topic.trendKeywords || [],
     topicOrigin: topic.topicOrigin || 'news',
+    topicGroup: topic.topicGroup || '',
     selectedAt: new Date().toISOString(),
   };
 
