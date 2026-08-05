@@ -1,3 +1,4 @@
 User-agent: *
 Allow: /
+Allow: /rss.xml
 Sitemap: https://landdoss075-dev.github.io/Blog/sitemap.xml
