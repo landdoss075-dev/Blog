@@ -76,14 +76,58 @@ function editorialTopicPool(niche, now = new Date()) {
   return [...seasonal, ...(niche.editorialTopics || [])].filter(Boolean);
 }
 
-function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
+function topicDiversityGroup(text, groups = []) {
+  const normalized = normalize(text);
+  const words = normalized.split(' ');
+  return groups.find((group) => (group.terms || []).some((term) => {
+    const normalizedTerm = normalize(String(term).replace(/\*$/, ''));
+    if (!normalizedTerm) return false;
+    if (String(term).endsWith('*')) {
+      return words.some((word) => word.startsWith(normalizedTerm));
+    }
+    return ` ${normalized} `.includes(` ${normalizedTerm} `);
+  }))?.key || '';
+}
+
+export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
   const pool = editorialTopicPool(niche, now);
   const candidates = pool.length ? pool : niche.newsQueries;
+  const diversityGroups = niche.topicDiversityGroups || [];
   const recentText = recentPosts
     .slice(0, 18)
     .map((post) => `${post.title || ''} ${post.source?.headline || ''}`.toLowerCase())
     .join(' ');
   const dayIndex = Math.floor(now.getTime() / 86400000);
+
+  if (diversityGroups.length) {
+    const recentGroupCounts = new Map();
+    for (const post of recentPosts.slice(0, niche.topicDiversityWindow || 5)) {
+      const text = `${post.title || ''} ${post.source?.headline || ''}`;
+      const group = topicDiversityGroup(text, diversityGroups);
+      if (group) recentGroupCounts.set(group, (recentGroupCounts.get(group) || 0) + 1);
+    }
+
+    const rotated = candidates.map((_, offset) => candidates[(dayIndex + offset) % candidates.length]);
+    const ranked = rotated.map((candidate, rotationIndex) => {
+      const words = normalize(candidate).split(' ').filter((word) => word.length >= 6);
+      const repeatedWords = words.filter((word) => recentText.includes(word)).length;
+      const group = topicDiversityGroup(candidate, diversityGroups);
+      return {
+        candidate,
+        rotationIndex,
+        repeatedWords,
+        groupCount: group ? (recentGroupCounts.get(group) || 0) : 0,
+      };
+    });
+
+    ranked.sort((a, b) =>
+      a.groupCount - b.groupCount
+      || a.repeatedWords - b.repeatedWords
+      || a.rotationIndex - b.rotationIndex
+    );
+    return ranked[0].candidate;
+  }
+
   for (let offset = 0; offset < candidates.length; offset++) {
     const candidate = candidates[(dayIndex + offset) % candidates.length];
     const words = normalize(candidate).split(' ').filter((word) => word.length >= 6);

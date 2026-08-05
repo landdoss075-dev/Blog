@@ -1,6 +1,12 @@
 import { config } from './config.js';
 import { log } from './log.js';
-import { buildMessages, buildRepairMessages, parseArticle, qualityIssue } from './prompt.js';
+import {
+  buildMessages,
+  buildRepairMessages,
+  parseArticle,
+  qualityIssue,
+  selectDistinctTitle,
+} from './prompt.js';
 import { callGroq } from './groq.js';
 import { callOpenAI } from './openai.js';
 import { callOpenRouter } from './openrouter.js';
@@ -45,6 +51,7 @@ export async function generateArticle(topic) {
     try {
       raw = await provider.call(buildMessages(topic));
       candidate = parseArticle(raw, topic.cta);
+      selectDistinctTitle(candidate, topic.recentTitles);
     } catch (err) {
       if (!raw) {
         lastError = err;
@@ -55,6 +62,7 @@ export async function generateArticle(topic) {
       try {
         const repaired = await provider.call(buildRepairMessages(raw, topic));
         candidate = parseArticle(repaired, topic.cta);
+        selectDistinctTitle(candidate, topic.recentTitles);
         log.ok(`Попытка ${attempt}/${MAX_ATTEMPTS}: JSON восстановлен, продолжаю публикацию.`);
       } catch (repairErr) {
         lastError = repairErr;

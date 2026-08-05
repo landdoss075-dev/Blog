@@ -381,6 +381,48 @@ export function parseArticle(raw, cta = {}) {
   return article;
 }
 
+const TITLE_SIMILARITY_STOPWORDS = new Set([
+  'и', 'в', 'во', 'на', 'с', 'со', 'к', 'у', 'из', 'за', 'что', 'как', 'а', 'но', 'или',
+  'это', 'этот', 'эта', 'эти', 'мой', 'моя', 'моей', 'свой', 'своя', 'после', 'для',
+]);
+
+function titleTokens(title) {
+  return toPlainText(title)
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/gi, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !TITLE_SIMILARITY_STOPWORDS.has(word))
+    .map((word) => (word.length > 7 ? word.slice(0, 7) : word));
+}
+
+function titleSimilarity(candidate, recentTitle) {
+  const candidateTokens = titleTokens(candidate);
+  const recentTokens = titleTokens(recentTitle);
+  if (!candidateTokens.length || !recentTokens.length) return 0;
+
+  const recentSet = new Set(recentTokens);
+  const shared = candidateTokens.filter((token) => recentSet.has(token)).length;
+  const union = new Set([...candidateTokens, ...recentTokens]).size;
+  const sameOpening = candidateTokens[0] === recentTokens[0] ? 0.75 : 0;
+  return shared / Math.max(1, union) + sameOpening;
+}
+
+/** Выбирает готовый вариант заголовка, меньше всего похожий на недавние, без нового вызова LLM. */
+export function selectDistinctTitle(article, recentTitles = []) {
+  const variants = (article.titleVariants || []).filter(Boolean);
+  if (variants.length < 2 || !recentTitles.length) return article;
+
+  const ranked = variants.map((title, index) => ({
+    title,
+    index,
+    score: Math.max(...recentTitles.map((recent) => titleSimilarity(title, recent))),
+  }));
+  ranked.sort((a, b) => a.score - b.score || a.index - b.index);
+  article.title = ranked[0].title.slice(0, 120);
+  return article;
+}
+
 /**
  * Достаточно ли статья «качественная», чтобы публиковать без перегенерации.
  * Ловит осечки, когда модель игнорирует формат: 1 заголовок и/или куцый текст
