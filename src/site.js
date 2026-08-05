@@ -51,8 +51,12 @@ function cdata(html) {
 
 function rssArticleHtml(html = '') {
   return String(html)
-    .replace(/<p>\s*<img\b[\s\S]*?<\/p>/gi, '')
     .replace(/<p>\s*<b>Понравился разбор\?<\/b>[\s\S]*?<\/p>\s*$/i, '')
+    .replace(/<strong>/gi, '<b>')
+    .replace(/<\/strong>/gi, '</b>')
+    .replace(/<em>/gi, '<i>')
+    .replace(/<\/em>/gi, '</i>')
+    .replace(/<p>\s*(<img\b[^>]*>)\s*<\/p>/gi, '<figure>$1</figure>')
     .trim();
 }
 
@@ -327,47 +331,45 @@ ${body}
 }
 
 function renderRobots(site) {
-  return `User-agent: *\nAllow: /\nSitemap: ${site.url}/sitemap.xml\n`;
+  return `User-agent: *\nAllow: /\nAllow: /rss.xml\nSitemap: ${site.url}/sitemap.xml\n`;
 }
 
-const RSS_FRESH_DAYS = Number(process.env.RSS_FRESH_DAYS || 7);
-const RSS_FRESH_WINDOW_MS = RSS_FRESH_DAYS * 24 * 60 * 60 * 1000;
+const configuredRssItemLimit = Number(process.env.RSS_ITEM_LIMIT || 10);
+const RSS_ITEM_LIMIT = Number.isInteger(configuredRssItemLimit) && configuredRssItemLimit >= 10
+  ? configuredRssItemLimit
+  : 10;
 
 function rssPosts(posts) {
-  const now = Date.now();
-  const fresh = posts.filter((p) => {
-    const ts = Date.parse(p.date);
-    return !Number.isNaN(ts) && now - ts <= RSS_FRESH_WINDOW_MS;
-  });
-  return fresh.length ? fresh : posts.slice(0, 1);
+  return posts
+    .filter((p) => !Number.isNaN(Date.parse(p.date)))
+    .slice(0, RSS_ITEM_LIMIT);
 }
 
-/** RSS-лента по требованиям Яндекс Дзена: чистый yandex:full-text + отдельные media-теги. */
+/** RSS 2.0 по актуальной схеме импорта Дзена: full HTML в content:encoded. */
 export function renderRss(posts, site) {
   const items = rssPosts(posts)
     .map((p) => {
-      const fullText = toPlainText(rssArticleHtml(p.html));
+      const fullText = rssArticleHtml(p.html);
       const imageType = p.image?.type || 'image/jpeg';
       const enclosure = p.image
-        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}"/>` +
-          `\n      <media:group><media:content url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}" medium="image"/></media:group>`
+        ? `\n      <enclosure url="${xmlEscape(p.image.url)}" type="${xmlEscape(imageType)}"/>`
         : '';
-      const cats = p.tags.map((t) => `\n      <category>${xmlEscape(t)}</category>`).join('');
       return `    <item>
       <title>${xmlEscape(p.title.slice(0, 200))}</title>
       <link>${xmlEscape(p.url)}</link>
       <guid isPermaLink="true">${xmlEscape(p.url)}</guid>
       <pubDate>${new Date(p.date).toUTCString()}</pubDate>
       <description>${xmlEscape(p.excerpt)}</description>
-      <author>${xmlEscape(authorName(site))}</author>
-      <yandex:genre>article</yandex:genre>
-      <yandex:full-text>${cdata(fullText)}</yandex:full-text>${enclosure}${cats}
+      <category>format-article</category>
+      <category>index</category>
+      <category>comment-all</category>${enclosure}
+      <content:encoded>${cdata(fullText)}</content:encoded>
     </item>`;
     })
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:yandex="http://news.yandex.ru" xmlns:media="http://search.yahoo.com/mrss/">
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${xmlEscape(site.title)}</title>
     <link>${xmlEscape(site.url)}</link>
