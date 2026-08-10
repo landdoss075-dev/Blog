@@ -51,7 +51,10 @@ function cdata(html) {
 
 function rssArticleHtml(html = '') {
   return String(html)
-    .replace(/<p>\s*<b>Понравился разбор\?<\/b>[\s\S]*?<\/p>\s*$/i, '')
+    .replace(
+      /<p>\s*<b>Понравился разбор\?<\/b>[\s\S]*?<\/p>\s*$/i,
+      '<p><b>Понравился материал?</b> Подпишитесь на канал, чтобы не пропустить новые публикации. Своим опытом и вопросами делитесь в комментариях.</p>',
+    )
     .replace(/<strong>/gi, '<b>')
     .replace(/<\/strong>/gi, '</b>')
     .replace(/<em>/gi, '<i>')

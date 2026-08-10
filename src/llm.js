@@ -45,6 +45,8 @@ export async function generateArticle(topic) {
   const MAX_ATTEMPTS = 3;
   let article = null;
   let lastError = null;
+  let bestCandidate = null;
+  let bestIssue = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let candidate;
     let raw = '';
@@ -75,17 +77,28 @@ export async function generateArticle(topic) {
       article = candidate;
       break;
     }
-    // Качество не дотянуло: на последней попытке публикуем как есть, иначе пробуем снова.
+    if (!bestCandidate || (candidate.bodyWords || 0) > (bestCandidate.bodyWords || 0)) {
+      bestCandidate = candidate;
+      bestIssue = issue;
+    }
+    lastError = new Error(issue);
+
+    // Слабый материал нельзя отправлять дальше в изображения, Telegram и RSS.
     if (attempt < MAX_ATTEMPTS) {
       log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: статья не дотянула (${issue}) — перегенерирую…`);
     } else {
-      log.warn(`Последняя попытка тоже слабая (${issue}) — публикую как есть.`);
-      article = candidate;
+      log.warn(`Последняя попытка тоже слабая (${issue}) — публикация отменена.`);
     }
   }
 
   if (!article) {
-    throw new Error(`Не удалось получить валидную статью за ${MAX_ATTEMPTS} попыток. Последняя ошибка: ${lastError?.message || 'нет'}`);
+    const bestSummary = bestCandidate
+      ? ` Лучший вариант: ${bestCandidate.bodyWords || 0} слов (${bestIssue}).`
+      : '';
+    throw new Error(
+      `Не удалось получить качественную статью за ${MAX_ATTEMPTS} попыток.${bestSummary} ` +
+      `Последняя ошибка: ${lastError?.message || 'нет'}`,
+    );
   }
 
   log.ok(`Статья готова: «${article.title}» (${article.bodyWords} слов, заголовков: ${article.titleVariants.length})`);

@@ -26,7 +26,8 @@ function makePost(index) {
       `<p>Первый абзац материала ${index}.</p>` +
       `<p><img src="${site.url}/assets/inline-${index}.jpg" alt=""></p>` +
       '<h2>Подзаголовок</h2><p><strong>Полный текст</strong> статьи.</p>' +
-      '<p><b>Понравился разбор?</b> Подпишитесь на канал.</p>',
+      '<p><b>Понравился разбор?</b> Подпишитесь на канал. ' +
+      'А ещё больше — в нашем Telegram-канале <a href="https://t.me/example">«Канал»</a>.</p>',
   };
 }
 
@@ -43,6 +44,8 @@ test('RSS соответствует обязательной разметке �
   assert.match(rss, /<figure><img src="https:\/\/example\.test\/assets\/inline-0\.jpg" alt=""><\/figure>/);
   assert.match(rss, /<b>Полный текст<\/b>/);
   assert.doesNotMatch(rss, /Понравился разбор/);
+  assert.match(rss, /<b>Понравился материал\?<\/b> Подпишитесь на канал/);
+  assert.doesNotMatch(rss, /t\.me\/example|Telegram-канале/);
   assert.doesNotMatch(rss, /yandex:full-text|media:content|<author>/);
   assert.doesNotMatch(rss, /произвольная тема/);
 });
