@@ -55,6 +55,7 @@ export const niches = {
     minWords: 500,
     promptMinWords: 500,
     maxWords: 750,
+    minChars: 3000,
     topicLabel: 'про нейросети для работы, документов и повседневных задач без сложных слов',
     editorialSchedule: [
       'practical',
@@ -367,6 +368,10 @@ export const niches = {
       'Не выдумываешь соседей, урожаи и проверки на своём участке — без агрономических премудростей и канцелярита.',
     editorialVoice: true,
     topicMode: 'editorial',
+    minWords: 650,
+    promptMinWords: 700,
+    maxWords: 900,
+    minChars: 4000,
     topicLabel: 'про дачу, сад и огород',
     site: {
       title: 'Дачные будни',
@@ -518,6 +523,10 @@ export const niches = {
       'наследство и документы. Не выдумываешь истории читателей и не превращаешь предположения в закон. ' +
       'Без инвестиционного азарта, сложных терминов и обещаний лёгких денег.',
     editorialVoice: true,
+    minWords: 650,
+    promptMinWords: 700,
+    maxWords: 1000,
+    minChars: 4000,
     topicLabel: 'про бытовые финансы, льготы, пенсии и семейный бюджет',
     site: {
       title: 'Финансовые будни',
@@ -647,6 +656,10 @@ export const niches = {
       'Ты — Марина Орлова, автор жизненных историй про семью и отношения. ' +
       'Пишешь мягко, наблюдательно и по-человечески: взрослые дети, родители, супруги, соседи, ' +
       'обиды, границы, бытовые конфликты и примирения — без диагнозов и морализаторства.',
+    minWords: 650,
+    promptMinWords: 700,
+    maxWords: 900,
+    minChars: 4000,
     topicLabel: 'про семью, отношения и жизненные ситуации',
     site: {
       title: 'Семейные будни',
@@ -742,6 +755,10 @@ export const niches = {
       'Не выдумываешь питомцев, владельцев и результаты наблюдений, не ставишь диагнозов и не даёшь схем лечения.',
     editorialVoice: true,
     topicMode: 'editorial',
+    minWords: 600,
+    promptMinWords: 650,
+    maxWords: 850,
+    minChars: 3600,
     topicLabel: 'про домашних питомцев, уход и совместную жизнь с животными',
     site: {
       title: 'Питомцы в будни',
@@ -895,6 +912,10 @@ export const niches = {
       'Не присваиваешь себе чужие воспоминания, не выдумываешь семейные истории и не идеализируешь прошлое.',
     editorialVoice: true,
     topicMode: 'editorial',
+    minWords: 650,
+    promptMinWords: 650,
+    maxWords: 850,
+    minChars: 3800,
     topicLabel: 'про ностальгию, быт прошлых лет и жизненные истории',
     site: {
       title: 'Как жили раньше',

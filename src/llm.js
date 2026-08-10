@@ -3,8 +3,9 @@ import { log } from './log.js';
 import {
   buildMessages,
   buildRepairMessages,
+  buildRevisionMessages,
   parseArticle,
-  qualityIssue,
+  qualityIssues,
   selectDistinctTitle,
 } from './prompt.js';
 import { callGroq } from './groq.js';
@@ -23,84 +24,71 @@ const PROVIDERS = {
 };
 
 /**
- * Генерирует статью у выбранного провайдера (PROVIDER=groq|openai)
+ * Генерирует статью у выбранного провайдера
  * и возвращает нормализованный объект статьи.
  */
-export async function generateArticle(topic) {
-  const name = config.provider;
-  const provider = PROVIDERS[name];
+export async function generateArticle(topic, options = {}) {
+  const name = options.name || config.provider;
+  const provider = options.provider || PROVIDERS[name];
   if (!provider) {
     throw new Error(`Неизвестный PROVIDER="${name}". Допустимо: ${Object.keys(PROVIDERS).join(', ')}.`);
   }
-  if (!provider.key()) {
+  if (!options.provider && !provider.key()) {
     throw new Error(`Для PROVIDER="${name}" не задан API-ключ.`);
   }
 
   log.info(`Генерация статьи: провайдер ${name}, модель ${provider.model()}…`);
 
-  // До 3 попыток. Ретрай нужен по двум причинам:
-  //  1) битый ответ модели — parseArticle бросает (Sonnet иногда отдаёт невалидный JSON:
-  //     неэкранированные кавычки/переводы строк в значениях). Раньше это роняло весь процесс.
-  //  2) статья не дотянула по качеству (1 заголовок / короткое тело).
-  const MAX_ATTEMPTS = 3;
-  let article = null;
-  let lastError = null;
-  let bestCandidate = null;
-  let bestIssue = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    let candidate;
+  const callAndParse = async (messages, stage) => {
     let raw = '';
     try {
-      raw = await provider.call(buildMessages(topic));
-      candidate = parseArticle(raw, topic.cta);
-      selectDistinctTitle(candidate, topic.recentTitles);
+      raw = await provider.call(messages);
     } catch (err) {
-      if (!raw) {
-        lastError = err;
-        log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: генерация не удалась (${err.message}) — перегенерирую…`);
-        continue;
-      }
-      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: ответ модели не разобран (${err.message}) — пробую восстановить JSON…`);
+      throw new Error(`${stage}: запрос к модели не удался (${err.message})`);
+    }
+
+    let candidate;
+    try {
+      candidate = parseArticle(raw, topic.cta);
+    } catch (parseErr) {
+      log.warn(`${stage}: ответ модели не разобран (${parseErr.message}) — восстанавливаю только JSON…`);
       try {
         const repaired = await provider.call(buildRepairMessages(raw, topic));
         candidate = parseArticle(repaired, topic.cta);
-        selectDistinctTitle(candidate, topic.recentTitles);
-        log.ok(`Попытка ${attempt}/${MAX_ATTEMPTS}: JSON восстановлен, продолжаю публикацию.`);
+        log.ok(`${stage}: JSON восстановлен.`);
       } catch (repairErr) {
-        lastError = repairErr;
-        log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: восстановить JSON не удалось (${repairErr.message}) — перегенерирую…`);
-        continue;
+        throw new Error(`${stage}: восстановить JSON не удалось (${repairErr.message})`);
       }
     }
-    const issue = qualityIssue(candidate, topic);
-    if (!issue) {
-      article = candidate;
-      break;
-    }
-    if (!bestCandidate || (candidate.bodyWords || 0) > (bestCandidate.bodyWords || 0)) {
-      bestCandidate = candidate;
-      bestIssue = issue;
-    }
-    lastError = new Error(issue);
+    selectDistinctTitle(candidate, topic.recentTitles);
+    return candidate;
+  };
 
-    // Слабый материал нельзя отправлять дальше в изображения, Telegram и RSS.
-    if (attempt < MAX_ATTEMPTS) {
-      log.warn(`Попытка ${attempt}/${MAX_ATTEMPTS}: статья не дотянула (${issue}) — перегенерирую…`);
-    } else {
-      log.warn(`Последняя попытка тоже слабая (${issue}) — публикация отменена.`);
-    }
-  }
+  const draft = await callAndParse(buildMessages(topic), 'Черновик');
+  const draftIssues = qualityIssues(draft, topic);
+  let article = draft;
 
-  if (!article) {
-    const bestSummary = bestCandidate
-      ? ` Лучший вариант: ${bestCandidate.bodyWords || 0} слов (${bestIssue}).`
-      : '';
-    throw new Error(
-      `Не удалось получить качественную статью за ${MAX_ATTEMPTS} попыток.${bestSummary} ` +
-      `Последняя ошибка: ${lastError?.message || 'нет'}`,
+  if (draftIssues.length) {
+    log.warn(`Черновик требует редакторской доработки: ${draftIssues.join('; ')}.`);
+    article = await callAndParse(
+      buildRevisionMessages(draft, draftIssues, topic),
+      'Редактура',
     );
+    const revisedIssues = qualityIssues(article, topic);
+    if (revisedIssues.length) {
+      const best = (article.bodyWords || 0) >= (draft.bodyWords || 0) ? article : draft;
+      throw new Error(
+        `Статья не прошла контроль после одной адресной редактуры. ` +
+        `Замечания: ${revisedIssues.join('; ')}. ` +
+        `Лучший вариант: ${best.bodyWords || 0} слов, ${best.bodyChars || 0} символов.`,
+      );
+    }
+    log.ok('Адресная редактура пройдена, все замечания исправлены.');
   }
 
-  log.ok(`Статья готова: «${article.title}» (${article.bodyWords} слов, заголовков: ${article.titleVariants.length})`);
+  log.ok(
+    `Статья готова: «${article.title}» ` +
+    `(${article.bodyWords} слов, ${article.bodyChars} символов, заголовков: ${article.titleVariants.length})`,
+  );
   return article;
 }

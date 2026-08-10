@@ -24,7 +24,8 @@ export function buildSystemPrompt(
   новостном поводе.`;
   return `${persona}
 Пишешь живым, человеческим языком: без канцелярита, без воды, без шаблонных фраз вроде
-"в современном мире" и "не секрет, что". Используешь конкретные наблюдаемые детали и ситуации.
+"в современном мире", "не секрет, что", "многие люди сталкиваются" и "давайте разберёмся".
+Используешь конкретные наблюдаемые детали и ситуации.
 Имена, суммы, даты, проценты и статистику добавляй только тогда, когда они есть в исходных данных.
 
 Жёсткие требования:
@@ -51,7 +52,7 @@ ${voiceRule}
 Ответ верни СТРОГО в формате JSON (без markdown-обёртки), по схеме:
 Первый символ ответа должен быть {, последний символ ответа должен быть }.
 {
-  "titles": ["3 разных варианта заголовка, каждый до 90 символов, в разном стиле"],
+  "titles": ["7 разных вариантов заголовка, каждый до 90 символов, в разных стилях"],
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "версия для Telegram: 600-900 символов, с эмодзи и абзацами, без HTML-тегов кроме <b> и <i>",
   "image_query": "3-4 английских слова — конкретное фото без видимого текста, вывесок, логотипов и экранных надписей",
@@ -138,6 +139,14 @@ ${trendKeywords.length ? `\nКлючевые тренды дня: ${trendKeyword
 - Не пересказывай новость дословно и не копируй факты, в которых не уверен.`;
   return `${topicContext}
 
+РЕДАКЦИОННОЕ ЗАДАНИЕ:
+- Читатель: русскоязычная аудитория, которой интересны материалы ${topicLabel}.
+- Конкретная ситуация или проблема: ${theme}.
+- Обещание статьи: ${topicIntent || 'дать понятный вывод и практическую пользу без воды и выдуманных фактов'}.
+- Угол подачи: ${format}.
+- Отличие от недавних материалов: другой главный предмет, другая ситуация и другая структура заголовка.
+- Финал: читатель получает ясный вывод или безопасное действие и короткий вопрос для комментариев.
+
 ФОРМАТ ПОДАЧИ для этой статьи (используй именно его, не сваливайся в общий шаблон):
 → ${format}
 ${guidance}
@@ -147,8 +156,10 @@ ${contentRules}
 - Внутри статьи обязательно используй 3-5 подзаголовков <h2>. Они должны разделять смысловые блоки,
   а не быть жирным текстом внутри абзаца.
 
-ЗАГОЛОВКИ (3 варианта, разные между собой):
+ЗАГОЛОВКИ (ровно 7 вариантов, заметно разных между собой):
 - Стиль хотя бы одного: ${titleStyle}.
+- Используй разные конструкции: практическая ошибка, конкретная ситуация, наблюдение, сравнение,
+  неожиданный результат, актуальное изменение и вопрос с понятным предметом.
 - НЕ используй шаблон «[новость] — как сделать…» через тире — им забита вся лента.
 ${recentTitles.length ? `- Эти заголовки уже выходили недавно — НЕ повторяй их структуру и формулировки:\n${recentTitles.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
 ${recentTopicHints.length ? `\nЗАПРЕЩЁННЫЕ ПОВТОРЫ:\nЭти инфоповоды уже были недавно. Не пересказывай их другими словами и не делай статью вокруг того же предмета/персоны/цифры:\n${recentTopicHints.slice(0, 8).map((t) => `  · ${t}`).join('\n')}` : ''}
@@ -208,7 +219,7 @@ export function buildRepairMessages(raw, topic = {}) {
 
 Схема:
 {
-  "titles": ["3 разных варианта заголовка до 90 символов"],
+  "titles": ["7 разных вариантов заголовка до 90 символов"],
   "html": "<p>...</p><p>...</p> — тело статьи в HTML, только теги p, h2, ul, li, b",
   "telegram": "600-900 символов для Telegram, без HTML-тегов кроме <b> и <i>",
   "image_query": "3-4 английских слова для поиска конкретной картинки без видимого текста",
@@ -218,7 +229,7 @@ export function buildRepairMessages(raw, topic = {}) {
 
 Правила:
 - Не добавляй новые факты и не переписывай статью с нуля.
-- Если в исходном ответе нет 3 заголовков, придумай недостающие по смыслу уже написанной статьи.
+- Если в исходном ответе нет 7 заголовков, придумай недостающие по смыслу уже написанной статьи.
 - Если Telegram-версии нет, сделай краткую версию из статьи.
 - Если в статье жирные псевдоподзаголовки вида <p><b>...</b></p>, преврати их в <h2>...</h2>.
 - Если image_queries нет, добавь 3 разных предметных запроса по смыслу статьи: без экранов,
@@ -227,6 +238,48 @@ export function buildRepairMessages(raw, topic = {}) {
 
 Исходный ответ модели:
 ${truncateRepairSource(raw)}`,
+    },
+  ];
+}
+
+function articleBodyWithoutCta(html = '') {
+  return String(html)
+    .replace(/<p>\s*<b>Понравился разбор\?<\/b>[\s\S]*?<\/p>\s*$/i, '')
+    .trim();
+}
+
+/** Одна адресная редактура уже написанного черновика вместо новой генерации с нуля. */
+export function buildRevisionMessages(article, issues = [], topic = {}) {
+  const draft = {
+    titles: article.titleVariants || [],
+    html: articleBodyWithoutCta(article.html),
+    telegram: article.telegram || '',
+    image_query: article.image_query || '',
+    image_queries: article.image_queries || [],
+    tags: article.tags || [],
+  };
+  return [
+    {
+      role: 'system',
+      content: `${buildSystemPrompt(topic.persona, {
+        editorialVoice: topic.editorialVoice === true,
+        minWords: topic.promptMinWords || 700,
+        maxWords: topic.maxWords || 1100,
+      })}
+
+Ты работаешь как строгий выпускающий редактор. Сохрани тему, полезные факты и удачные части
+черновика. Не пиши новую статью с нуля и не добавляй неподтверждённые факты. Исправь все
+перечисленные замечания за одну редактуру. Верни только полный итоговый JSON.`,
+    },
+    {
+      role: 'user',
+      content: `Отредактируй черновик статьи ${topic.topicLabel || 'для блога'}.
+
+Замечания редактора:
+${issues.map((issue) => `- ${issue}`).join('\n')}
+
+Черновик:
+${truncateRepairSource(JSON.stringify(draft), 20000)}`,
     },
   ];
 }
@@ -374,7 +427,9 @@ export function parseArticle(raw, cta = {}) {
   // Санитизация HTML — критично для автопостинга без присмотра.
   article.html = sanitizeHtml(normalizeArticleHtml(article.html));
   // Кол-во слов в теле — считаем ДО добавления CTA, чтобы CTA не завышал метрику.
-  article.bodyWords = toPlainText(article.html).split(/\s+/).filter(Boolean).length;
+  const bodyText = toPlainText(article.html);
+  article.bodyWords = bodyText.split(/\s+/).filter(Boolean).length;
+  article.bodyChars = bodyText.length;
   // CTA-подписка в конце (монетизация Дзена завязана на подписчиков). Доверенный HTML —
   // добавляется ПОСЛЕ санитайзера, поэтому здесь допустима гиперссылка <a> (в отличие от
   // тела от модели, где <a> вычищается). Ссылка на Telegram — одна, в конце, после пользы:
@@ -424,15 +479,29 @@ function titleSimilarity(candidate, recentTitle) {
   return shared / Math.max(1, union) + sameOpening;
 }
 
+function titleQualityPenalty(title) {
+  const text = toPlainText(title).trim();
+  let penalty = 0;
+  if (text.length < 35) penalty += (35 - text.length) / 20;
+  if (text.length > 90) penalty += (text.length - 90) / 10;
+  if (/вы не поверите|все ахнули|потрясло всех|изменило всё|шок|сенсаци/i.test(text)) penalty += 2;
+  if (/^(это|вот|такое|так|всё)\b/i.test(text)) penalty += 0.75;
+  return penalty;
+}
+
 /** Выбирает готовый вариант заголовка, меньше всего похожий на недавние, без нового вызова LLM. */
 export function selectDistinctTitle(article, recentTitles = []) {
   const variants = (article.titleVariants || []).filter(Boolean);
-  if (variants.length < 2 || !recentTitles.length) return article;
+  if (variants.length < 2) return article;
 
   const ranked = variants.map((title, index) => ({
     title,
     index,
-    score: Math.max(...recentTitles.map((recent) => titleSimilarity(title, recent))),
+    score:
+      titleQualityPenalty(title) +
+      (recentTitles.length
+        ? Math.max(...recentTitles.map((recent) => titleSimilarity(title, recent)))
+        : 0),
   }));
   ranked.sort((a, b) => a.score - b.score || a.index - b.index);
   article.title = ranked[0].title.slice(0, 120);
@@ -449,26 +518,79 @@ function containsForbiddenTerm(text, terms = []) {
   return terms.find((term) => normalized.includes(String(term).toLowerCase()));
 }
 
-export function qualityIssue(article, { forbiddenTerms = [], minWords = 650 } = {}) {
-  if (!article.titleVariants || article.titleVariants.length < 2) {
-    return `мало вариантов заголовка (${article.titleVariants?.length || 0}, нужно ≥2)`;
+const GENERIC_INTRO_PATTERNS = [
+  /в современном мире/i,
+  /не секрет, что/i,
+  /многие люди сталкиваются/i,
+  /многие из нас/i,
+  /каждый из нас/i,
+  /давайте разбер[её]мся/i,
+  /сегодня мы поговорим/i,
+  /в этой статье/i,
+  /трудно переоценить/i,
+];
+
+function firstParagraphText(html = '') {
+  const match = String(html).match(/<p>([\s\S]*?)<\/p>/i);
+  return toPlainText(match?.[1] || '');
+}
+
+export function qualityIssues(
+  article,
+  {
+    forbiddenTerms = [],
+    minWords = 650,
+    maxWords = 1100,
+    minChars = 4000,
+    minTitleVariants = 7,
+  } = {},
+) {
+  const issues = [];
+  const titleKeys = new Set(
+    (article.titleVariants || [])
+      .map((title) => toPlainText(title).toLowerCase().replace(/[^a-zа-я0-9]+/gi, ' ').trim())
+      .filter(Boolean),
+  );
+  if (titleKeys.size < minTitleVariants) {
+    issues.push(`мало разных вариантов заголовка (${titleKeys.size}, нужно ≥${minTitleVariants})`);
   }
   if ((article.bodyWords || 0) < minWords) {
-    return `тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥${minWords})`;
+    issues.push(`тело слишком короткое (${article.bodyWords || 0} слов, нужно ≥${minWords})`);
   }
-  const h2Count = (article.html.match(/<h2>/g) || []).length;
-  if (h2Count < 2) {
-    return `мало подзаголовков h2 (${h2Count}, нужно ≥2)`;
+  if ((article.bodyWords || 0) > maxWords) {
+    issues.push(`тело слишком длинное (${article.bodyWords || 0} слов, нужно ≤${maxWords})`);
   }
-  if ((article.image_queries || []).length < 2) {
-    return `мало разных запросов для картинок (${article.image_queries?.length || 0}, нужно ≥2)`;
+  if ((article.bodyChars || 0) < minChars) {
+    issues.push(`мало содержательного текста (${article.bodyChars || 0} символов, нужно ≥${minChars})`);
+  }
+  const h2Count = (article.html.match(/<h2>/gi) || []).length;
+  if (h2Count < 3) {
+    issues.push(`мало подзаголовков h2 (${h2Count}, нужно ≥3)`);
+  }
+  if ((article.image_queries || []).length < 3) {
+    issues.push(`мало разных запросов для картинок (${article.image_queries?.length || 0}, нужно ≥3)`);
+  }
+  const intro = firstParagraphText(article.html);
+  if (intro.length < 100) {
+    issues.push(`первый абзац слишком короткий (${intro.length} символов, нужно ≥100)`);
+  }
+  if (intro.length > 650) {
+    issues.push(`первый абзац слишком длинный (${intro.length} символов, нужно ≤650)`);
+  }
+  const genericIntro = GENERIC_INTRO_PATTERNS.find((pattern) => pattern.test(intro));
+  if (genericIntro) {
+    issues.push('шаблонное вступление: начни с конкретной ситуации, проблемы или наблюдения');
   }
   const forbidden = containsForbiddenTerm(
     [article.title, article.html, article.telegram, ...(article.tags || [])].join(' '),
     forbiddenTerms,
   );
   if (forbidden) {
-    return `найдено стоп-слово другой ниши: "${forbidden}"`;
+    issues.push(`найдено стоп-слово другой ниши: "${forbidden}"`);
   }
-  return null;
+  return issues;
+}
+
+export function qualityIssue(article, options = {}) {
+  return qualityIssues(article, options)[0] || null;
 }

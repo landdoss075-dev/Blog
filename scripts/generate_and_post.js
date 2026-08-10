@@ -41,6 +41,8 @@ async function main() {
   topic.minWords = niche.minWords || 650;
   topic.promptMinWords = niche.promptMinWords || 700;
   topic.maxWords = niche.maxWords || 1100;
+  topic.minChars = niche.minChars || 4000;
+  topic.minTitleVariants = 7;
   topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
 
   // 2. Генерация статьи
