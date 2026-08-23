@@ -71,6 +71,52 @@ jobs:
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
           echo "Finance slot check: slot=$slot utc_hour=$hour allowed=$allowed"
 
+      - name: Select finance text model
+        if: steps.publish_window.outputs.allowed == '1'
+        id: text_model
+        shell: bash
+        run: |
+          moscow_date="$(TZ=Europe/Moscow date +%F)"
+          slot="${{ inputs.publication_slot }}"
+          default_model="${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}"
+          test_start="2026-08-24"
+          test_end="2026-08-30"
+          start_epoch="$(date -d "$test_start" +%s)"
+          end_epoch="$(date -d "$test_end" +%s)"
+          current_epoch="$(date -d "$moscow_date" +%s)"
+          selected_model="$default_model"
+          test_phase="default"
+
+          if [[ "$slot" == "morning" || "$slot" == "evening" ]] \
+            && (( current_epoch >= start_epoch && current_epoch <= end_epoch )); then
+            day_index=$(( (current_epoch - start_epoch) / 86400 ))
+
+            if (( day_index % 2 == 0 )); then
+              if [[ "$slot" == "morning" ]]; then
+                selected_model="anthropic/claude-opus-5"
+              else
+                selected_model="anthropic/claude-sonnet-5"
+              fi
+            else
+              if [[ "$slot" == "morning" ]]; then
+                selected_model="anthropic/claude-sonnet-5"
+              else
+                selected_model="anthropic/claude-opus-5"
+              fi
+            fi
+            test_phase="opus-sonnet-ab"
+          fi
+
+          echo "model=$selected_model" >> "$GITHUB_OUTPUT"
+          echo "Finance text model: date=$moscow_date slot=$slot model=$selected_model phase=$test_phase"
+          {
+            echo "### Finance text model"
+            echo "- Date (MSK): $moscow_date"
+            echo "- Slot: $slot"
+            echo "- Model: \`$selected_model\`"
+            echo "- Phase: $test_phase"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run finance post generator
         if: steps.publish_window.outputs.allowed == '1'
         env:
@@ -80,7 +126,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5' }}
+          OPENROUTER_MODEL: ${{ steps.text_model.outputs.model }}
           IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER }}
           OPENROUTER_IMAGE_MODEL: ${{ vars.OPENROUTER_IMAGE_MODEL }}
           IMAGE_ASPECT_RATIO: ${{ vars.IMAGE_ASPECT_RATIO }}
