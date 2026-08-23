@@ -10,6 +10,10 @@ on:
         description: 'Dry run (сгенерировать без публикации)'
         type: boolean
         default: false
+      force_publish:
+        description: 'Опубликовать вручную, пока канал на паузе'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,6 +24,8 @@ concurrency:
 
 jobs:
   post:
+    # Automatic publication is paused. Existing scheduler dispatches are ignored.
+    if: ${{ inputs.dry_run || inputs.force_publish }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout engine

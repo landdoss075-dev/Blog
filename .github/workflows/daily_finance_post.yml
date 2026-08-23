@@ -2,12 +2,24 @@ name: Daily Finance Post
 
 on:
   # GitHub cron отключён из-за задержек. FinMicro вызывает workflow_dispatch
-  # ежедневно в 07:10 UTC (10:10 МСК).
+  # ежедневно в 07:10 и 16:10 UTC (10:10 и 19:10 МСК).
   # Публикация: Telegram «Финансовые будни» + сайт/RSS finbudni.ru.
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Dry run (сгенерировать без публикации)'
+        type: boolean
+        default: false
+      publication_slot:
+        description: 'Редакционный слот публикации'
+        type: choice
+        options:
+          - manual
+          - morning
+          - evening
+        default: manual
+      force_publish:
+        description: 'Разрешить ручную публикацию вне планового окна'
         type: boolean
         default: false
 
@@ -41,7 +53,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check finance publication slot
+        id: publish_window
+        shell: bash
+        run: |
+          hour="$(date -u +%H)"
+          slot="${{ inputs.publication_slot }}"
+          if [[ "${{ inputs.dry_run }}" == "true" || "${{ inputs.force_publish }}" == "true" ]]; then
+            allowed=1
+          elif [[ "$slot" == "morning" && "$hour" == "07" ]]; then
+            allowed=1
+          elif [[ "$slot" == "evening" && "$hour" == "16" ]]; then
+            allowed=1
+          else
+            allowed=0
+          fi
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          echo "Finance slot check: slot=$slot utc_hour=$hour allowed=$allowed"
+
       - name: Run finance post generator
+        if: steps.publish_window.outputs.allowed == '1'
         env:
           PROVIDER: ${{ vars.PROVIDER || 'openrouter' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -59,11 +90,12 @@ jobs:
           FINBUDNI_TELEGRAM_BOT_TOKEN: ${{ secrets.FINBUDNI_TELEGRAM_BOT_TOKEN }}
           FINBUDNI_TELEGRAM_CHANNEL_ID: ${{ vars.FINBUDNI_TELEGRAM_CHANNEL_ID || '@finanbudni' }}
           FINBUDNI_TELEGRAM_CHANNEL_URL: ${{ vars.FINBUDNI_TELEGRAM_CHANNEL_URL || 'https://t.me/finanbudni' }}
+          PUBLICATION_SLOT: ${{ inputs.publication_slot }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: node scripts/generate_and_post.js --niche=finance
 
       - name: Commit generated finance site
-        if: ${{ !inputs.dry_run }}
+        if: ${{ steps.publish_window.outputs.allowed == '1' && !inputs.dry_run }}
         working-directory: channels/finance/docs
         run: |
           git config user.name "github-actions[bot]"

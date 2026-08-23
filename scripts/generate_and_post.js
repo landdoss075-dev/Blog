@@ -23,6 +23,9 @@ async function main() {
   const niche = getNiche(nicheFromArgs());
   const site = resolveSite(niche);
   const tgTarget = resolveTelegram(niche);
+  const publicationSlot = ['morning', 'evening'].includes(process.env.PUBLICATION_SLOT)
+    ? process.env.PUBLICATION_SLOT
+    : '';
 
   log.step(`AI Blog Autoposter [${niche.key}]${config.dryRun ? ' — DRY RUN (без публикации)' : ''}`);
   assertRequired();
@@ -43,6 +46,7 @@ async function main() {
   topic.maxWords = niche.maxWords || 1100;
   topic.minChars = niche.minChars || 4000;
   topic.minTitleVariants = 7;
+  topic.publicationSlot = publicationSlot;
   topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
 
   // 2. Генерация статьи
@@ -56,6 +60,7 @@ async function main() {
     trendKeywords: topic.trendKeywords || [],
     topicOrigin: topic.topicOrigin || 'news',
     topicGroup: topic.topicGroup || '',
+    publicationSlot,
     selectedAt: new Date().toISOString(),
   };
 

@@ -105,6 +105,7 @@ export function buildUserPrompt({
   editorialFormat = '',
   editorialTitleStyle = '',
   topicOrigin = 'news',
+  publicationSlot = '',
   currentDate = new Date().toISOString().slice(0, 10),
 }) {
   const format = editorialFormat || pick(promptFormats.length ? promptFormats : FORMATS);
@@ -112,6 +113,11 @@ export function buildUserPrompt({
   const guidance = promptGuidance.length
     ? `\nНИШЕВЫЕ ПРАВИЛА:\n${promptGuidance.map((rule) => `- ${rule}`).join('\n')}\n`
     : '';
+  const slotGuidance = publicationSlot === 'morning'
+    ? `\nСЛОТ ПУБЛИКАЦИИ — УТРО:\n- Дай прикладной материал о выплате, льготе, вычете, платеже или документе, который читатель может проверить сегодня.\n- Начни с конкретной денежной или документальной ситуации и закончи коротким порядком действий.`
+    : publicationSlot === 'evening'
+      ? `\nСЛОТ ПУБЛИКАЦИИ — ВЕЧЕР:\n- Выбери иной угол: разбор распространённой ошибки, мифа, спорной строки документа или бытового денежного случая.\n- Не повторяй утренний тип материала; объясни причину расхождения и безопасный способ проверки.`
+      : '';
   const topicContext = topicOrigin === 'editorial'
     ? `Редакционная тема дня: «${theme}».
 ${topicGroup ? `Тип материала: ${topicGroup}.` : ''}
@@ -146,6 +152,7 @@ ${trendKeywords.length ? `\nКлючевые тренды дня: ${trendKeyword
 - Угол подачи: ${format}.
 - Отличие от недавних материалов: другой главный предмет, другая ситуация и другая структура заголовка.
 - Финал: читатель получает ясный вывод или безопасное действие и короткий вопрос для комментариев.
+${slotGuidance}
 
 ФОРМАТ ПОДАЧИ для этой статьи (используй именно его, не сваливайся в общий шаблон):
 → ${format}

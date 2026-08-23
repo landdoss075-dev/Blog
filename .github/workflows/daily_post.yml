@@ -28,6 +28,9 @@ concurrency:
 
 jobs:
   post:
+    # Channel paused on 2026-08-23. A dry run remains available for testing;
+    # a real manual publication requires the explicit force_publish input.
+    if: ${{ inputs.dry_run || inputs.force_publish }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

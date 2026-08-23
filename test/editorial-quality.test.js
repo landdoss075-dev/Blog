@@ -83,6 +83,16 @@ test('промпт запрашивает редакционное задани�
   assert.match(messages[1].content, /ровно 7 вариантов/);
 });
 
+test('финансовые слоты получают разные редакционные углы', () => {
+  const morning = buildMessages({ ...topic, publicationSlot: 'morning' });
+  const evening = buildMessages({ ...topic, publicationSlot: 'evening' });
+
+  assert.match(morning[1].content, /СЛОТ ПУБЛИКАЦИИ — УТРО/);
+  assert.match(morning[1].content, /который читатель может проверить сегодня/);
+  assert.match(evening[1].content, /СЛОТ ПУБЛИКАЦИИ — ВЕЧЕР/);
+  assert.match(evening[1].content, /Не повторяй утренний тип материала/);
+});
+
 test('каждая ниша использует свой редакционный диапазон', () => {
   const expected = {
     ai: [500, 750, 3000],
