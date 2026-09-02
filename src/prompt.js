@@ -335,7 +335,7 @@ export function extractJson(raw) {
 }
 
 function normalizeArticleHtml(html) {
-  return String(html || '')
+  const normalized = String(html || '')
     .replace(/<p>\s*<(?:b|strong)>\s*([^<]{3,90}?)\s*<\/(?:b|strong)>\s*<\/p>/gi, (_, text) => {
       const heading = toPlainText(text).trim().replace(/[.:;!?]+$/u, '');
       return heading ? `<h2>${heading}</h2>` : '';
@@ -344,6 +344,78 @@ function normalizeArticleHtml(html) {
       const heading = toPlainText(text).trim().replace(/[.:;!?]+$/u, '');
       return heading ? `<h2>${heading}</h2>` : '';
     });
+
+  return splitLongFirstParagraph(normalized);
+}
+
+const INTRO_MIN_CHARS = 100;
+const INTRO_MAX_CHARS = 650;
+
+function splitPlainIntro(text, maxChars = INTRO_MAX_CHARS) {
+  const words = toPlainText(text).split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+
+  const plain = words.join(' ');
+  const target = Math.max(220, Math.min(maxChars - 40, Math.floor(plain.length * 0.55)));
+  const first = [];
+  const rest = [];
+
+  for (const word of words) {
+    const candidate = first.concat(word).join(' ');
+    if (first.length && candidate.length > target) {
+      rest.push(word);
+    } else if (rest.length) {
+      rest.push(word);
+    } else {
+      first.push(word);
+    }
+  }
+
+  const firstText = first.join(' ');
+  const restText = rest.join(' ');
+  if (firstText.length < INTRO_MIN_CHARS || firstText.length > maxChars || restText.length < 80) {
+    return null;
+  }
+
+  return `<p>${firstText}</p><p>${restText}</p>`;
+}
+
+function splitLongFirstParagraph(html, maxChars = INTRO_MAX_CHARS) {
+  return String(html || '').replace(/<p>([\s\S]*?)<\/p>/i, (full, inner) => {
+    const intro = toPlainText(inner);
+    if (intro.length <= maxChars) return full;
+
+    const parts = String(inner).split(/(?<=[.!?…])\s+/u).filter(Boolean);
+    const target = Math.max(260, Math.min(maxChars - 40, Math.floor(intro.length * 0.55)));
+    const first = [];
+    let rest = [];
+
+    for (let index = 0; index < parts.length; index += 1) {
+      const part = parts[index];
+      const candidate = first.concat(part).join(' ');
+      if (first.length && toPlainText(candidate).length > target) {
+        rest = parts.slice(index);
+        break;
+      }
+      first.push(part);
+    }
+
+    const firstHtml = first.join(' ');
+    const restHtml = rest.join(' ');
+    const firstText = toPlainText(firstHtml);
+    const restText = toPlainText(restHtml);
+
+    if (
+      rest.length &&
+      firstText.length >= INTRO_MIN_CHARS &&
+      firstText.length <= maxChars &&
+      restText.length >= 80
+    ) {
+      return `<p>${firstHtml}</p><p>${restHtml}</p>`;
+    }
+
+    return splitPlainIntro(intro, maxChars) || full;
+  });
 }
 
 const IMAGE_TEXT_RISK_TERMS = new Set([
@@ -437,17 +509,21 @@ export function parseArticle(raw, cta = {}) {
   const bodyText = toPlainText(article.html);
   article.bodyWords = bodyText.split(/\s+/).filter(Boolean).length;
   article.bodyChars = bodyText.length;
-  // CTA-подписка в конце (монетизация Дзена завязана на подписчиков). Доверенный HTML —
-  // добавляется ПОСЛЕ санитайзера, поэтому здесь допустима гиперссылка <a> (в отличие от
-  // тела от модели, где <a> вычищается). Ссылка на Telegram — одна, в конце, после пользы:
-  // так Дзен не штрафует за внешнюю ссылку (контент полезен, читатель дочитал до неё).
+  // CTA-подписка в конце. Доверенный HTML добавляется ПОСЛЕ санитайзера, поэтому здесь
+  // допустима гиперссылка <a> (в отличие от тела от модели, где <a> вычищается).
   const tgUrl = cta.channelUrl || '';
-  const tgName = cta.channelName || 'канал';
-  const ctaTopic = cta.topicLabel || 'на эту тему';
-  const tgLink = tgUrl
+  const tgName = toPlainText(cta.channelName || 'канал').trim() || 'канал';
+  const ctaTopic = toPlainText(cta.topicLabel || 'на эту тему').trim() || 'на эту тему';
+  const tgLink = tgUrl && cta.externalTelegram !== false
     ? ` А ещё больше — в нашем Telegram-канале <a href="${tgUrl}" target="_blank" rel="noopener">«${tgName}»</a>.`
     : '';
-  article.html += `<p><b>Понравился разбор?</b> Подпишитесь на канал — впереди ещё больше материалов ${ctaTopic}.${tgLink} Своим опытом и вопросами делитесь в комментариях.</p>`;
+  if (cta.subscriptionMode === 'habit') {
+    const promise = toPlainText(cta.subscriptionPromise || `каждый день разбираем материалы ${ctaTopic}`).trim();
+    const teaser = toPlainText(cta.subscriptionTeaser || '').trim();
+    article.html += `<p><b>Чтобы не пропустить следующие разборы, подпишитесь на «${tgName}».</b> ${promise}.${teaser ? ` ${teaser}` : ''} Своим опытом и вопросами делитесь в комментариях.</p>`;
+  } else {
+    article.html += `<p><b>Понравился разбор?</b> Подпишитесь на канал — впереди ещё больше материалов ${ctaTopic}.${tgLink} Своим опытом и вопросами делитесь в комментариях.</p>`;
+  }
   article.title = chosenTitle.slice(0, 120);
   article.titleVariants = titleList;
   article.tags = Array.isArray(article.tags) ? article.tags.map((t) => String(t).trim()).filter(Boolean) : [];
@@ -578,11 +654,11 @@ export function qualityIssues(
     issues.push(`мало разных запросов для картинок (${article.image_queries?.length || 0}, нужно ≥3)`);
   }
   const intro = firstParagraphText(article.html);
-  if (intro.length < 100) {
-    issues.push(`первый абзац слишком короткий (${intro.length} символов, нужно ≥100)`);
+  if (intro.length < INTRO_MIN_CHARS) {
+    issues.push(`первый абзац слишком короткий (${intro.length} символов, нужно ≥${INTRO_MIN_CHARS})`);
   }
-  if (intro.length > 650) {
-    issues.push(`первый абзац слишком длинный (${intro.length} символов, нужно ≤650)`);
+  if (intro.length > INTRO_MAX_CHARS) {
+    issues.push(`первый абзац слишком длинный (${intro.length} символов, нужно ≤${INTRO_MAX_CHARS})`);
   }
   const genericIntro = GENERIC_INTRO_PATTERNS.find((pattern) => pattern.test(intro));
   if (genericIntro) {

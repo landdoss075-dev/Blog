@@ -1,8 +1,10 @@
 # AI Tools Blog — Autoposter
 
-Автопостер статей про ИИ-инструменты для русскоязычной аудитории.
-Раз в день: горячая тема из Google News → статья (OpenRouter `gpt-5-mini`) → картинка (Unsplash) →
-публикация в **Telegram-канал** и на **сайт GitHub Pages**, RSS которого импортирует **Яндекс Дзен**.
+Автопостер статей для русскоязычных контентных каналов.
+Текущий боевой фокус — **«Финансовые будни»**: бытовые финансы 45+, льготы, ЖКХ,
+капремонт, пенсии, наследство, выплаты и документы.
+Пайплайн: тема → статья через OpenRouter → обложка → **Telegram-канал** и **сайт GitHub Pages**,
+RSS которого импортирует **Яндекс Дзен**.
 Без сервера — всё на GitHub Actions (cron).
 
 План проекта — в [projectblog.md](projectblog.md), история — в [changelogblog.md](changelogblog.md).
@@ -35,17 +37,32 @@ scripts/
 docs/                    — генерируется: сайт GitHub Pages + rss.xml
 ```
 
+## Текущая контентная стратегия
+
+С сентября 2026 основной KPI — не просто показы, а рост подписчиков Дзена и дочитывания
+от подписчиков для выхода на монетизацию.
+
+Для «Финансовых будней» включён отдельный режим:
+
+- внешний Telegram-CTA в конце финансовых статей отключён;
+- финальный блок зовёт подписаться на сам канал;
+- темы строятся как мини-серии без повторов: один общий пласт, но разные углы — квитанция,
+  возраст, собственность, отказ, наследство, личный кабинет, региональное условие;
+- генератор не должен выпускать больше двух материалов подряд с одним центральным словом
+  вроде `капремонт`, `наследство` или `пособие`.
+
 ## Провайдеры генерации
 
 Переключаются одной переменной `PROVIDER` (+ имя модели):
 
 | PROVIDER | Ключ | Модель (пример) | Цена |
 |---|---|---|---|
-| `openrouter` | `OPENROUTER_API_KEY` | `openai/gpt-5-mini` | ~0.4¢/статья |
+| `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-5` / `anthropic/claude-opus-5` | зависит от модели |
 | `openai` | `OPENAI_API_KEY` | `gpt-4o` / `gpt-5` | ~2¢/статья |
 | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | бесплатно |
 
-Текущий выбор — **OpenRouter + gpt-5-mini** (лучшее качество/цена для дочитываний на Дзене).
+Текущий выбор — **OpenRouter + Claude Sonnet 5** как базовая модель; Opus 5 используется
+для A/B-сравнения в финансовом workflow.
 
 ## Локальный запуск
 
@@ -66,7 +83,7 @@ npm run compare    # сравнить две модели на одной тем
 2. **Settings → Pages**: source = ветка `main`, папка `/docs`. Запомнить URL сайта.
 3. **Settings → Secrets and variables → Actions**:
    - *Secrets*: `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `UNSPLASH_ACCESS_KEY` (опц.)
-   - *Variables*: `PROVIDER=openrouter`, `OPENROUTER_MODEL=openai/gpt-5-mini`, `SITE_URL=https://USERNAME.github.io/REPO`, `SITE_TITLE`, `SITE_DESCRIPTION`
+   - *Variables*: `PROVIDER=openrouter`, `OPENROUTER_MODEL=anthropic/claude-sonnet-5`, `SITE_URL=https://USERNAME.github.io/REPO`, `SITE_TITLE`, `SITE_DESCRIPTION`
 4. **Actions → Daily AI Post → Run workflow** для теста (есть галка *Dry run*).
 5. Дальше cron постит ежедневно в 10:00 МСК и коммитит обновлённый сайт.
 6. Когда в ленте накопится ≥10 статей — подключить `…/rss.xml` в кабинете Дзена.

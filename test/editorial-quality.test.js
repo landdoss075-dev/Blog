@@ -4,6 +4,7 @@ import test from 'node:test';
 import { generateArticle } from '../src/llm.js';
 import { niches } from '../src/niches.js';
 import { buildMessages, parseArticle, qualityIssues } from '../src/prompt.js';
+import { toPlainText } from '../src/sanitize.js';
 
 const topic = {
   persona: 'Ты — редактор тестового полезного канала.',
@@ -91,6 +92,39 @@ test('финансовые слоты получают разные редакц
   assert.match(morning[1].content, /который читатель может проверить сегодня/);
   assert.match(evening[1].content, /СЛОТ ПУБЛИКАЦИИ — ВЕЧЕР/);
   assert.match(evening[1].content, /Не повторяй утренний тип материала/);
+});
+
+test('финансовый CTA зовёт подписаться и не уводит в Telegram', () => {
+  const article = parseArticle(articleRaw({ strong: true }), {
+    channelUrl: 'https://t.me/finanbudni',
+    channelName: niches.finance.channelName,
+    topicLabel: niches.finance.topicLabel,
+    ...niches.finance.cta,
+  });
+
+  assert.match(article.html, /Чтобы не пропустить следующие разборы/);
+  assert.match(article.html, /Финансовые будни/);
+  assert.doesNotMatch(article.html, /t\.me\/finanbudni/);
+});
+
+test('длинный первый абзац автоматически делится перед финальным контролем', () => {
+  const payload = JSON.parse(articleRaw({ strong: true }));
+  const longIntro = [
+    'Утром человек открывает уведомление о выплате и видит знакомую сумму, но одна строка в справке выглядит не так, как месяц назад.',
+    'Сначала кажется, что это обычная техническая подпись, которую можно не читать.',
+    'Потом выясняется, что именно в этой строке часто прячется причина задержки, отказа или лишнего похода с документами.',
+    'Если пропустить её сразу, через несколько недель приходится заново собирать бумаги и объяснять то, что можно было проверить за пять минут.',
+    'Поэтому полезнее начать не с общих разговоров о законах, а с простой проверки: какая строка изменилась, кто её добавил и что она требует от заявителя.',
+    'Такой подход не обещает чудес, зато помогает спокойно понять, где реальная проблема, а где просто формулировка ведомства.',
+  ].join(' ');
+
+  payload.html = payload.html.replace(/<p>[\s\S]*?<\/p>/, `<p>${longIntro}</p>`);
+
+  const article = parseArticle(JSON.stringify(payload), topic.cta);
+  const firstParagraph = toPlainText(article.html.match(/<p>([\s\S]*?)<\/p>/i)?.[1] || '');
+
+  assert.ok(firstParagraph.length <= 650);
+  assert.ok(!qualityIssues(article, topic).some((issue) => /первый абзац слишком длинный/.test(issue)));
 });
 
 test('каждая ниша использует свой редакционный диапазон', () => {

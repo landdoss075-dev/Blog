@@ -47,7 +47,12 @@ async function main() {
   topic.minChars = niche.minChars || 4000;
   topic.minTitleVariants = 7;
   topic.publicationSlot = publicationSlot;
-  topic.cta = { channelUrl: tgTarget.channelUrl, channelName: niche.channelName, topicLabel: niche.topicLabel };
+  topic.cta = {
+    channelUrl: tgTarget.channelUrl,
+    channelName: niche.channelName,
+    topicLabel: niche.topicLabel,
+    ...(niche.cta || {}),
+  };
 
   // 2. Генерация статьи
   log.step(`2/5 Генерация статьи (${config.provider})`);
