@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchTopic, pickEditorialTopic } from '../src/news.js';
+import { fetchTopic, isNewsTopicStrongEnough, pickEditorialTopic } from '../src/news.js';
 import { buildMessages, buildUserPrompt, selectDistinctTitle } from '../src/prompt.js';
 import { niches } from '../src/niches.js';
 
@@ -49,6 +49,26 @@ test('title selector avoids a repeated opening when another variant exists', () 
     article.title,
     'Одна фраза сестры вернула нас к обиде десятилетней давности',
   );
+});
+
+test('finance rejects a weak news topic without changing other niches', () => {
+  assert.equal(isNewsTopicStrongEnough(11.9, niches.finance), false);
+  assert.equal(isNewsTopicStrongEnough(20, niches.finance), true);
+  assert.equal(isNewsTopicStrongEnough(11.9, niches.ai), true);
+});
+
+test('finance prompt preserves the winning mechanics without cloning the winning topic', () => {
+  const prompt = buildUserPrompt({
+    theme: 'льгота, документ, проверка',
+    headline: 'Ведомство уточнило порядок получения льготы',
+    headlines: ['Ведомство уточнило порядок получения льготы'],
+    promptGuidance: niches.finance.promptGuidance,
+    topicLabel: niches.finance.topicLabel,
+  });
+
+  assert.match(prompt, /не тему и не бытовую сцену, а механику пользы/i);
+  assert.match(prompt, /Строго различай ЕДВ, пенсию, НСУ/i);
+  assert.match(prompt, /не должен просить читателя публично раскрывать инвалидность/i);
 });
 
 test('Neurobudni follows the 3 practical, 2 search, 1 lab, 1 safety weekly schedule', () => {

@@ -214,8 +214,19 @@ function editorialTopicResult(niche, recentPosts, now = new Date()) {
       .map((post) => post.source?.headline || post.source?.theme || post.title)
       .filter(Boolean),
     topicOrigin: 'editorial',
+    topicScore: null,
     currentDate: now.toISOString().slice(0, 10),
   };
+}
+
+/**
+ * Низкий абсолютный счёт означает, что даже лучший повод дня может быть слабым.
+ * Порог включается только для ниш, где он явно задан; остальные работают как раньше.
+ */
+export function isNewsTopicStrongEnough(score, niche = {}) {
+  const threshold = Number(niche.minNewsTopicScore);
+  if (!Number.isFinite(threshold)) return true;
+  return Number(score) >= threshold;
 }
 
 /** URL Google News RSS для поискового запроса (русская локаль). */
@@ -454,6 +465,15 @@ export async function fetchTopic(niche) {
   }
   if (top !== scored[0]) log.info('Похожая тема уже выходила недавно — взял другой, свежий повод.');
 
+  if (!isNewsTopicStrongEnough(top.score, niche)) {
+    log.warn(
+      `Лучший неповторяющийся повод слишком слабый ` +
+      `(счёт ${top.score.toFixed(1)}, минимум ${niche.minNewsTopicScore}) — ` +
+      'использую редакционную запасную тему.',
+    );
+    return editorialTopicResult(niche, recentPosts, currentDate);
+  }
+
   const trendKeywords = [...freq.entries()]
     .filter(([, c]) => c >= 2)
     .sort((a, b) => b[1] - a[1])
@@ -480,6 +500,7 @@ export async function fetchTopic(niche) {
     recentTitles, // недавние заголовки — чтобы модель не повторяла их формулировки
     recentTopicHints, // недавние инфоповоды — чтобы модель не перефразировала тот же сюжет
     topicOrigin: 'news',
+    topicScore: top.score,
     currentDate: currentDate.toISOString().slice(0, 10),
   };
 }

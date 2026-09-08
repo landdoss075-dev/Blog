@@ -64,6 +64,7 @@ async function main() {
     headlines: topic.headlines || [],
     trendKeywords: topic.trendKeywords || [],
     topicOrigin: topic.topicOrigin || 'news',
+    topicScore: Number.isFinite(topic.topicScore) ? topic.topicScore : null,
     topicGroup: topic.topicGroup || '',
     publicationSlot,
     selectedAt: new Date().toISOString(),
