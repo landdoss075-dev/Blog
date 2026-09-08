@@ -164,7 +164,7 @@ test('слабый черновик проходит ровно одну адр�
   assert.equal(qualityIssues(article, topic).length, 0);
 });
 
-test('после одной неудачной редактуры публикация останавливается', async () => {
+test('после двух неудачных редактур публикация останавливается', async () => {
   let calls = 0;
   const provider = {
     model: () => 'test-model',
@@ -176,7 +176,7 @@ test('после одной неудачной редактуры публика
 
   await assert.rejects(
     generateArticle(topic, { provider, name: 'test' }),
-    /не прошла контроль после одной адресной редактуры/,
+    /не прошла контроль после двух адресных редактур/,
   );
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });

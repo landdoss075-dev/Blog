@@ -69,19 +69,43 @@ export async function generateArticle(topic, options = {}) {
   let article = draft;
 
   if (draftIssues.length) {
-    log.warn(`Черновик требует редакторской доработки: ${draftIssues.join('; ')}.`);
-    article = await callAndParse(
-      buildRevisionMessages(draft, draftIssues, topic),
-      'Редактура',
-    );
-    const revisedIssues = qualityIssues(article, topic);
-    if (revisedIssues.length) {
-      const best = (article.bodyWords || 0) >= (draft.bodyWords || 0) ? article : draft;
-      throw new Error(
-        `Статья не прошла контроль после одной адресной редактуры. ` +
-        `Замечания: ${revisedIssues.join('; ')}. ` +
-        `Лучший вариант: ${best.bodyWords || 0} слов, ${best.bodyChars || 0} символов.`,
+    let currentIssues = draftIssues;
+    const maxRevisionAttempts = 2;
+
+    for (let attempt = 1; attempt <= maxRevisionAttempts; attempt += 1) {
+      log.warn(
+        `${attempt === 1 ? 'Черновик требует редакторской доработки' : 'Повторная редактура требуется'}: ` +
+        `${currentIssues.join('; ')}.`,
       );
+      const revised = await callAndParse(
+        buildRevisionMessages(article, currentIssues, topic),
+        attempt === 1 ? 'Редактура' : `Редактура ${attempt}`,
+      );
+      const revisedIssues = qualityIssues(revised, topic);
+
+      if (!revisedIssues.length) {
+        article = revised;
+        currentIssues = [];
+        break;
+      }
+
+      const articleIssues = qualityIssues(article, topic);
+      if (
+        revisedIssues.length < articleIssues.length ||
+        (revisedIssues.length === articleIssues.length &&
+          (revised.bodyWords || 0) >= (article.bodyWords || 0))
+      ) {
+        article = revised;
+        currentIssues = revisedIssues;
+      }
+
+      if (attempt === maxRevisionAttempts) {
+        throw new Error(
+          `Статья не прошла контроль после двух адресных редактур. ` +
+          `Замечания: ${currentIssues.join('; ')}. ` +
+          `Лучший вариант: ${article.bodyWords || 0} слов, ${article.bodyChars || 0} символов.`,
+        );
+      }
     }
     log.ok('Адресная редактура пройдена, все замечания исправлены.');
   }
