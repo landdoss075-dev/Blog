@@ -88,6 +88,12 @@ test('revision keeps the original assignment and sources, never carries CTA back
   assert.match(buildUserPrompt({ ...topic, headlines: [] }), /ЕДИНСТВЕННЫЙ ВЫПУСК ДНЯ/);
 });
 
+test('budget assignments cannot inherit an unrelated public-services comparison format', () => {
+  const prompt = buildUserPrompt({ ...topic, topicGroup: 'budget', headlines: [], promptFormats: ['сравнение МФЦ и Госуслуг'], titleStyles: ['новые правила МФЦ'] });
+  assert.doesNotMatch(prompt, /сравнение МФЦ и Госуслуг|новые правила МФЦ/);
+  assert.match(prompt, /без правовых советов и сравнения ведомств/);
+});
+
 test('model CTA and repeat revisions leave exactly one programmatic CTA', () => {
   const data = JSON.parse(payload());
   data.html += '<p>Чтобы не пропустить разборы, подпишитесь на канал.</p>';
@@ -166,6 +172,12 @@ test('a fabricated source quotation cannot pass factual approval', async () => {
   const verdict = { onTopic: true, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: [], claims: [{ claim: 'Надбавка назначается автоматически', sourceUrl: 'https://sfr.gov.ru/example', quote: 'Это выдуманная цитата, которой нет на странице' }] };
   const issues = await reviewFinanceArticle(parseArticle(payload()), { ...topic, factualSources: [{ url: 'https://sfr.gov.ru/example', text: 'Вопросы оформления уточняются при обращении.' }] }, async () => JSON.stringify(verdict));
   assert.ok(issues.some(issue => /не содержит/.test(issue)));
+});
+
+test('an exact quotation from a loaded official source passes the evidence check', async () => {
+  const source = { url: 'https://sfr.gov.ru/example', text: 'Выплата назначается при соблюдении условий, перечисленных на этой странице.' };
+  const verdict = { ...JSON.parse(approve), claims: [{ claim: 'Назначение зависит от условий', sourceUrl: source.url, quote: source.text }] };
+  assert.deepEqual(await reviewFinanceArticle(parseArticle(payload()), { ...topic, factualSources: [source] }, async () => JSON.stringify(verdict)), []);
 });
 
 test('read official references survive site RSS and do not contaminate body counts', () => {
