@@ -7,7 +7,7 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
  * Имя модели — с префиксом провайдера, напр. "openai/gpt-5-mini",
  * "anthropic/claude-...", "meta-llama/llama-3.3-70b-instruct".
  */
-export async function callOpenRouter(messages) {
+export async function callOpenRouter(messages, options = {}) {
   const model = config.openrouter.model;
   // Reasoning-модели (gpt-5, o-серия) тратят часть лимита на «размышления».
   const isReasoning = /gpt-5|\/o\d/i.test(model);
@@ -18,7 +18,7 @@ export async function callOpenRouter(messages) {
     messages,
     // 4000 для обычных моделей: статья 700-1100 слов + версия для Telegram + JSON-обёртка
     // не влезают в 2048 (Sonnet/gpt-5-mini обрезали бы ответ → битый JSON).
-    max_tokens: isReasoning ? 8000 : 4000,
+    max_tokens: options.maxTokens || (isReasoning ? 8000 : 4000),
   };
   if (isReasoning) {
     body.reasoning = { effort: 'low' }; // унифицированный параметр OpenRouter
@@ -46,6 +46,10 @@ export async function callOpenRouter(messages) {
   const data = await res.json();
   if (data.error) {
     throw new Error(`OpenRouter: ${data.error.message || JSON.stringify(data.error)}`);
+  }
+  if (!data.choices?.[0]?.message?.content) {
+    // Только технические метаданные, без ключей или текста исходных данных.
+    console.warn(`OpenRouter empty content: finish_reason=${data.choices?.[0]?.finish_reason || 'missing'}, completion_tokens=${data.usage?.completion_tokens ?? 'unknown'}`);
   }
   return data.choices?.[0]?.message?.content;
 }

@@ -11,6 +11,7 @@ import {
 import { callGroq } from './groq.js';
 import { callOpenAI } from './openai.js';
 import { callOpenRouter } from './openrouter.js';
+import { reviewFinanceArticle, appendFinanceReferences } from './finance-review.js';
 
 /** Доступные провайдеры: какой клиент звать и какую модель показывать в логах. */
 const PROVIDERS = {
@@ -38,11 +39,27 @@ export async function generateArticle(topic, options = {}) {
   }
 
   log.info(`Генерация статьи: провайдер ${name}, модель ${provider.model()}…`);
+  // Финансовый JSON включает 650–1000 русских слов и 7 заголовков: прежний
+  // лимит 4000 часто исчерпывался до появления полного содержательного ответа.
+  const callProvider = messages => provider.call(messages, topic.strictFinance ? { maxTokens: 8000 } : undefined);
+  const checkCandidate = async candidate => {
+    const issues = qualityIssues(candidate, topic);
+    // Дорогая смысловая проверка — только после прохождения простых ограничений.
+    if (topic.strictFinance && !issues.length) {
+      issues.push(...await reviewFinanceArticle(candidate, topic, callProvider));
+    }
+    return issues;
+  };
 
   const callAndParse = async (messages, stage) => {
     let raw = '';
     try {
-      raw = await provider.call(messages);
+      raw = await callProvider(messages);
+      if (!String(raw || '').trim()) {
+        log.warn(`${stage}: пустой ответ — повторяю исходное задание один раз, без сочинения JSON из пустоты.`);
+        raw = await callProvider(messages);
+        if (!String(raw || '').trim()) throw new Error('два пустых ответа подряд');
+      }
     } catch (err) {
       throw new Error(`${stage}: запрос к модели не удался (${err.message})`);
     }
@@ -53,19 +70,19 @@ export async function generateArticle(topic, options = {}) {
     } catch (parseErr) {
       log.warn(`${stage}: ответ модели не разобран (${parseErr.message}) — восстанавливаю только JSON…`);
       try {
-        const repaired = await provider.call(buildRepairMessages(raw, topic));
+        const repaired = await callProvider(buildRepairMessages(raw, topic));
         candidate = parseArticle(repaired, topic.cta);
         log.ok(`${stage}: JSON восстановлен.`);
       } catch (repairErr) {
         throw new Error(`${stage}: восстановить JSON не удалось (${repairErr.message})`);
       }
     }
-    selectDistinctTitle(candidate, topic.recentTitles);
+    selectDistinctTitle(candidate, topic.recentTitles, topic);
     return candidate;
   };
 
   const draft = await callAndParse(buildMessages(topic), 'Черновик');
-  const draftIssues = qualityIssues(draft, topic);
+  const draftIssues = await checkCandidate(draft);
   let article = draft;
 
   if (draftIssues.length) {
@@ -81,7 +98,7 @@ export async function generateArticle(topic, options = {}) {
         buildRevisionMessages(article, currentIssues, topic),
         attempt === 1 ? 'Редактура' : `Редактура ${attempt}`,
       );
-      const revisedIssues = qualityIssues(revised, topic);
+      const revisedIssues = await checkCandidate(revised);
 
       if (!revisedIssues.length) {
         article = revised;
@@ -89,7 +106,7 @@ export async function generateArticle(topic, options = {}) {
         break;
       }
 
-      const articleIssues = qualityIssues(article, topic);
+      const articleIssues = currentIssues;
       if (
         revisedIssues.length < articleIssues.length ||
         (revisedIssues.length === articleIssues.length &&
@@ -109,6 +126,8 @@ export async function generateArticle(topic, options = {}) {
     }
     log.ok('Адресная редактура пройдена, все замечания исправлены.');
   }
+
+  if (topic.strictFinance) appendFinanceReferences(article, topic);
 
   log.ok(
     `Статья готова: «${article.title}» ` +

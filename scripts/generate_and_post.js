@@ -4,6 +4,7 @@ import { config, assertRequired } from '../src/config.js';
 import { log } from '../src/log.js';
 import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
+import { loadFinanceSources } from '../src/finance-review.js';
 import { generateArticle } from '../src/llm.js';
 import { generateCoverImage } from '../src/cover_image.js';
 import { fetchImages } from '../src/unsplash.js';
@@ -46,7 +47,14 @@ async function main() {
   topic.maxWords = niche.maxWords || 1100;
   topic.minChars = niche.minChars || 4000;
   topic.minTitleVariants = 7;
+  topic.strictFinance = niche.strictFinance === true;
+  topic.singleDaily = niche.singleDaily === true;
   topic.publicationSlot = publicationSlot;
+  if (topic.strictFinance) {
+    topic.factualSources = await loadFinanceSources(topic);
+    if (!topic.factualSources.length && topic.topicGroup !== 'budget') throw new Error('Ни один официальный источник не прочитан — финансовая публикация остановлена до генерации.');
+    log.info(`Источники финансовой темы: ${topic.factualSources.length}, группа=${topic.topicGroup}.`);
+  }
   topic.cta = {
     channelUrl: tgTarget.channelUrl,
     channelName: niche.channelName,
@@ -66,6 +74,11 @@ async function main() {
     topicOrigin: topic.topicOrigin || 'news',
     topicScore: Number.isFinite(topic.topicScore) ? topic.topicScore : null,
     topicGroup: topic.topicGroup || '',
+    topicId: topic.topicId || '',
+    sourceUrl: topic.sourceUrl || '',
+    selectionReason: topic.selectionReason || topic.topicOrigin,
+    rejectedNewsScore: topic.rejectedNewsScore ?? null,
+    references: (topic.factualSources || []).map(({ label, url, checkedAt }) => ({ label, url, checkedAt })),
     publicationSlot,
     selectedAt: new Date().toISOString(),
   };

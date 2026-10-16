@@ -2,7 +2,7 @@ name: Daily Finance Post
 
 on:
   # GitHub cron отключён из-за задержек. FinMicro вызывает workflow_dispatch
-  # ежедневно в 07:10 и 16:10 UTC (10:10 и 19:10 МСК).
+  # один раз в день в 16:10 UTC (19:10 МСК), эксперимент с 17.10.2026.
   # Публикация: Telegram «Финансовые будни» + сайт/RSS finbudni.ru.
   workflow_dispatch:
     inputs:
@@ -61,8 +61,6 @@ jobs:
           slot="${{ inputs.publication_slot }}"
           if [[ "${{ inputs.dry_run }}" == "true" || "${{ inputs.force_publish }}" == "true" ]]; then
             allowed=1
-          elif [[ "$slot" == "morning" && "$hour" == "07" ]]; then
-            allowed=1
           elif [[ "$slot" == "evening" && "$hour" == "16" ]]; then
             allowed=1
           else
@@ -70,6 +68,13 @@ jobs:
           fi
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
           echo "Finance slot check: slot=$slot utc_hour=$hour allowed=$allowed"
+
+      - name: Prevent a second automatic finance article today
+        if: steps.publish_window.outputs.allowed == '1'
+        env:
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FORCE_PUBLISH: ${{ inputs.force_publish && '1' || '' }}
+        run: node scripts/check_finance_daily_limit.js
 
       - name: Select finance text model
         if: steps.publish_window.outputs.allowed == '1'

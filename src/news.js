@@ -121,6 +121,36 @@ function editorialCandidateWords(candidate, niche) {
 
 export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
   const pool = editorialTopicPool(niche, now);
+  if (niche.strictTopicSelection) {
+    const recent = recentPosts.slice(0, 30);
+    const used = new Set(recent.flatMap(post => [post.source?.headline, post.source?.theme, post.title]).filter(Boolean).map(normalize));
+    const eligible = pool.filter(candidate => {
+      if (used.has(normalize(editorialTopicText(candidate)))) return false;
+      if (candidate.cooldownTerm) {
+        return !recentPosts.some(post => {
+          const date = Date.parse(post.date);
+          return Number.isFinite(date) && now.getTime() - date < candidate.cooldownDays * 86400000
+            && includesAny(`${post.title || ''} ${post.source?.headline || ''}`, [candidate.cooldownTerm]);
+        });
+      }
+      return true;
+    });
+    if (!eligible.length) throw new Error('Редакционный резерв исчерпан без повторов — публикация остановлена.');
+    const groups = niche.topicDiversityGroups || [];
+    const usage = new Map();
+    for (const post of recentPosts.slice(0, 14)) {
+      const group = post.source?.topicGroup || topicDiversityGroup(`${post.title || ''} ${post.source?.headline || ''}`, groups);
+      usage.set(group, (usage.get(group) || 0) + 1);
+    }
+    const lastGroups = recentPosts.slice(0, 2).map(post => post.source?.topicGroup || topicDiversityGroup(post.title || '', groups));
+    const ranked = eligible.map((candidate, index) => {
+      const group = editorialTopicGroup(candidate, niche);
+      const weight = groups.find(item => item.key === group)?.weight || 1;
+      return { candidate, index, score: (usage.get(group) || 0) / weight + (lastGroups[0] === group ? 5 : 0) + (lastGroups.every(item => item === group) && lastGroups.length === 2 ? 20 : 0) };
+    });
+    ranked.sort((a, b) => a.score - b.score || a.index - b.index);
+    return ranked[0].candidate;
+  }
   const fallbackCandidates = pool.length ? pool : niche.newsQueries;
   const scheduledGroup = scheduledEditorialGroup(niche, now);
   const scheduledCandidates = scheduledGroup
@@ -208,6 +238,9 @@ function editorialTopicResult(niche, recentPosts, now = new Date()) {
     topicIntent: typeof topic === 'object' ? topic.intent || '' : '',
     editorialFormat: typeof topic === 'object' ? topic.format || '' : '',
     editorialTitleStyle: typeof topic === 'object' ? topic.titleStyle || '' : '',
+    topicId: typeof topic === 'object' ? topic.id || '' : '',
+    requiredAnchors: typeof topic === 'object' ? topic.requiredAnchors || [] : [],
+    recentSamples: recentPosts.slice(0, 5).map(post => ({ title: post.title, excerpt: post.excerpt })),
     recentTitles: recentPosts.map((post) => post.title).filter(Boolean),
     recentTopicHints: recentPosts
       .slice(0, 8)
@@ -330,10 +363,10 @@ async function fetchFeed(url) {
  *
  * Возвращает: { theme, headline, headlines, trendKeywords }
  */
-export async function fetchTopic(niche) {
+export async function fetchTopic(niche, options = {}) {
   const newsQueries = niche.newsQueries;
-  const recentPosts = await loadRecentPosts(niche.dir, 18);
-  const currentDate = new Date();
+  const recentPosts = options.recentPosts || await loadRecentPosts(niche.dir, niche.strictTopicSelection ? 40 : 18);
+  const currentDate = options.now || new Date();
   if (niche.topicMode === 'editorial') {
     const result = editorialTopicResult(niche, recentPosts, currentDate);
     log.ok(`Редакционная тема [${niche.key}]: «${result.headline}»`);
@@ -347,12 +380,12 @@ export async function fetchTopic(niche) {
   // Топ техно-лента добавляется только нишам, которым она в тему (ИИ). Для дачи/питомцев
   // и т.п. она тащит техно-новости мимо темы — берём только целевые поисковые запросы.
   const urls = niche.topTechFeed ? [...newsQueries.map(searchUrl), TOP_TECH_URL] : newsQueries.map(searchUrl);
-  const lists = await Promise.all(urls.map(fetchFeed));
+  const lists = await Promise.all(urls.map(options.fetchFeed || fetchFeed));
   const items = lists.flat();
 
   // Дедупликация по нормализованному заголовку.
   const seen = new Set();
-  const now = Date.now();
+  const now = currentDate.getTime();
   const all = [];
   let droppedSensitive = 0;
   let droppedBlocked = 0;
@@ -371,18 +404,22 @@ export async function fetchTopic(niche) {
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const ts = it.isoDate ? Date.parse(it.isoDate) : NaN;
-    all.push({ title, sourceName, ts: Number.isNaN(ts) ? null : ts });
+    all.push({ title, sourceName, sourceUrl: it.source?.url || it.source?.$?.url || it.link || '', ts: Number.isNaN(ts) ? null : ts });
   }
   if (droppedSensitive) log.info(`Отсеяно чувствительных тем (политика/трагедии): ${droppedSensitive}`);
   if (droppedBlocked) log.info(`Отсеяно нерелевантных источников/юрисдикций: ${droppedBlocked}`);
 
   if (all.length === 0) {
     log.warn('Подходящих новостей не получено — использую редакционную запасную тему.');
-    return editorialTopicResult(niche, recentPosts, currentDate);
+    return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'no-admissible-news' };
   }
 
-  // Свежие новости (≤48ч). Если таких нет — берём все (с неизвестной датой тоже).
-  let fresh = all.filter((x) => x.ts !== null && now - x.ts <= FRESH_WINDOW_MS);
+  // Для финансов старую/недатированную новость нельзя выдавать за свежий повод.
+  let fresh = all.filter((x) => x.ts !== null && x.ts <= now && now - x.ts <= FRESH_WINDOW_MS);
+  if (!fresh.length && niche.strictTopicSelection) {
+    log.warn(`Диагностика новостей: получено=${items.length}, допустимо=${all.length}, свежих=0. Резерв: no-fresh-news.`);
+    return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'no-fresh-news' };
+  }
   if (fresh.length === 0) fresh = all;
 
   // Частотный трендоскоп: считаем стемы, попутно запоминая «красивую» полную словоформу.
@@ -433,7 +470,8 @@ export async function fetchTopic(niche) {
     .filter(Boolean);
   const recentKwSets = recentPosts.map((post) => ({
     sameDay: isWithinHours(post.date, 30),
-    words: uniqueKeywords(recentTopicText(post)),
+    // Не включаем весь кластер и общие теги: они превращают разные новости в ложные дубли.
+    words: uniqueKeywords(niche.strictTopicSelection ? `${post.title || ''} ${post.source?.headline || ''}` : recentTopicText(post)),
   }));
   const duplicateScore = (title) => {
     const kw = uniqueKeywords(title);
@@ -451,9 +489,16 @@ export async function fetchTopic(niche) {
       return max;
     }, null);
   };
-  const isRecentDuplicate = (title) => duplicateScore(title)?.duplicate;
+  const isRecentDuplicate = (title) => duplicateScore(title)?.duplicate || (niche.strictTopicSelection
+    && /капремонт/i.test(title)
+    && recentPosts.some(post => /капремонт/i.test(`${post.title || ''} ${post.source?.headline || ''}`)
+      && now - Date.parse(post.date) < 7 * 86400000));
   let top = scored.find((x) => !isRecentDuplicate(x.title));
   if (!top) {
+    if (niche.strictTopicSelection) {
+      log.warn(`Диагностика новостей: получено=${items.length}, свежих=${fresh.length}, неповторяющихся=0. Резерв: all-duplicates.`);
+      return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'all-duplicates' };
+    }
     // Если вся лента забита одним инфоповодом, всё равно берём наименее похожий вариант,
     // а не первый самый горячий дубль.
     top = [...scored].sort((a, b) => {
@@ -464,6 +509,7 @@ export async function fetchTopic(niche) {
     log.warn('Все горячие поводы похожи на недавние — взял наименее похожий вариант из ленты.');
   }
   if (top !== scored[0]) log.info('Похожая тема уже выходила недавно — взял другой, свежий повод.');
+  log.info(`Диагностика новостей: получено=${items.length}, допустимо=${all.length}, свежих=${fresh.length}, неповторяющихся=${scored.filter(x => !isRecentDuplicate(x.title)).length}, лучший=${top.score.toFixed(1)}, максимум=${scored[0].score.toFixed(1)}.`);
 
   if (!isNewsTopicStrongEnough(top.score, niche)) {
     log.warn(
@@ -471,7 +517,7 @@ export async function fetchTopic(niche) {
       `(счёт ${top.score.toFixed(1)}, минимум ${niche.minNewsTopicScore}) — ` +
       'использую редакционную запасную тему.',
     );
-    return editorialTopicResult(niche, recentPosts, currentDate);
+    return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'low-score', rejectedNewsScore: top.score };
   }
 
   const trendKeywords = [...freq.entries()]
@@ -501,6 +547,9 @@ export async function fetchTopic(niche) {
     recentTopicHints, // недавние инфоповоды — чтобы модель не перефразировала тот же сюжет
     topicOrigin: 'news',
     topicScore: top.score,
+    sourceUrl: top.sourceUrl,
+    selectionReason: 'fresh-distinct-news',
+    recentSamples: recentPosts.slice(0, 5).map(post => ({ title: post.title, excerpt: post.excerpt })),
     currentDate: currentDate.toISOString().slice(0, 10),
   };
 }
