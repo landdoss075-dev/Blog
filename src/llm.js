@@ -41,7 +41,7 @@ export async function generateArticle(topic, options = {}) {
   log.info(`Генерация статьи: провайдер ${name}, модель ${provider.model()}…`);
   // Финансовый JSON включает 650–1000 русских слов и 7 заголовков: прежний
   // лимит 4000 часто исчерпывался до появления полного содержательного ответа.
-  const callProvider = messages => provider.call(messages, topic.strictFinance ? { maxTokens: 8000 } : undefined);
+  const callProvider = messages => provider.call(messages, topic.strictFinance ? { maxTokens: 8000, reasoningEffort: 'low' } : undefined);
   const checkCandidate = async candidate => {
     const issues = qualityIssues(candidate, topic);
     // Дорогая смысловая проверка — только после прохождения простых ограничений.
@@ -99,6 +99,7 @@ export async function generateArticle(topic, options = {}) {
         attempt === 1 ? 'Редактура' : `Редактура ${attempt}`,
       );
       const revisedIssues = await checkCandidate(revised);
+      if (revisedIssues.length) log.warn(`Редактура ${attempt}: ${revisedIssues.join('; ')}.`);
 
       if (!revisedIssues.length) {
         article = revised;
@@ -108,7 +109,7 @@ export async function generateArticle(topic, options = {}) {
 
       const articleIssues = currentIssues;
       if (
-        revisedIssues.length < articleIssues.length ||
+        topic.strictFinance || revisedIssues.length < articleIssues.length ||
         (revisedIssues.length === articleIssues.length &&
           (revised.bodyWords || 0) >= (article.bodyWords || 0))
       ) {

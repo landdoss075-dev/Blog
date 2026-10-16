@@ -20,7 +20,11 @@ export async function callOpenRouter(messages, options = {}) {
     // не влезают в 2048 (Sonnet/gpt-5-mini обрезали бы ответ → битый JSON).
     max_tokens: options.maxTokens || (isReasoning ? 8000 : 4000),
   };
-  if (isReasoning) {
+  if (options.reasoningEffort) {
+    // Sonnet 5 включает high-thinking по умолчанию; он мог потратить весь
+    // max_tokens на рассуждения и вернуть пустую статью с finish_reason=length.
+    body.reasoning = { effort: options.reasoningEffort };
+  } else if (isReasoning) {
     body.reasoning = { effort: 'low' }; // унифицированный параметр OpenRouter
   } else {
     body.temperature = 0.8;

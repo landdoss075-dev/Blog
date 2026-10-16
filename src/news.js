@@ -124,7 +124,9 @@ export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
   if (niche.strictTopicSelection) {
     const recent = recentPosts.slice(0, 30);
     const used = new Set(recent.flatMap(post => [post.source?.headline, post.source?.theme, post.title]).filter(Boolean).map(normalize));
+    const usedIds = new Set(recent.map(post => post.source?.topicId).filter(Boolean));
     const eligible = pool.filter(candidate => {
+      if (candidate.id && usedIds.has(candidate.id)) return false;
       if (used.has(normalize(editorialTopicText(candidate)))) return false;
       if (candidate.cooldownTerm) {
         return !recentPosts.some(post => {

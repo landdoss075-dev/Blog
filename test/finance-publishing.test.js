@@ -7,6 +7,7 @@ import { generateArticle } from '../src/llm.js';
 import { loadFinanceSources, reviewFinanceArticle, appendFinanceReferences } from '../src/finance-review.js';
 import { financePublishedToday } from '../scripts/check_finance_daily_limit.js';
 import { renderRss } from '../src/site.js';
+import { callOpenRouter } from '../src/openrouter.js';
 
 const approve = JSON.stringify({ onTopic: true, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: [] });
 const payload = () => JSON.stringify({
@@ -38,6 +39,7 @@ test('reserve does not reuse an original assignment disguised by a different tit
   const niche = { ...niches.finance, editorialTopics: niches.finance.editorialTopics.slice(0, 2) };
   const first = niche.editorialTopics[0];
   assert.equal(pickEditorialTopic(niche, [{ title: 'Совсем другой заголовок', source: { headline: first.theme } }]).theme, niche.editorialTopics[1].theme);
+  assert.equal(pickEditorialTopic(niche, [{ source: { topicId: first.id, headline: 'Редакционная формулировка позже изменилась' } }]).id, niche.editorialTopics[1].id);
   assert.throws(() => pickEditorialTopic(niche, niche.editorialTopics.map(t => ({ source: { headline: t.theme } }))), /исчерпан/);
 });
 
@@ -108,6 +110,20 @@ test('malformed editorial verdict cannot silently approve an article', async () 
   await assert.rejects(reviewFinanceArticle(parseArticle(payload()), topic, async () => '{}'), /неполную проверку/);
 });
 
+test('a longer revision reaches semantic review and its findings drive the next revision', async () => {
+  const short = JSON.parse(payload());
+  short.html = '<p>Наследнику стоит уточнить у нотариуса сведения о банковском счёте.</p>';
+  const rejected = JSON.stringify({ onTopic: true, titleMatches: false, useful: false, distinct: false, factsSupported: true, issues: ['Уникальное замечание редактора', 'Уточни пользу', 'Убери повтор'] });
+  const responses = [JSON.stringify(short), payload(), rejected, payload(), approve];
+  let calls = 0;
+  await generateArticle(topic, { name: 'test', provider: { model: () => 'test', call: async messages => {
+    calls++;
+    if (calls === 4) assert.match(messages[1].content, /Уникальное замечание редактора/);
+    return responses.shift();
+  } } });
+  assert.equal(calls, 5);
+});
+
 test('persistent semantic rejection stops publication after the existing revision budget', async () => {
   let calls = 0;
   const reject = JSON.stringify({ onTopic: false, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: ['Текст не отвечает исходному вопросу'] });
@@ -125,6 +141,16 @@ test('empty model responses never become invented generic articles through JSON 
   assert.equal(calls, 2);
 });
 
+test('finance OpenRouter requests reserve output capacity and limit thinking', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(body.max_tokens, 8000);
+    assert.deepEqual(body.reasoning, { effort: 'low' });
+    return { ok: true, json: async () => ({ choices: [{ message: { content: '{}' } }] }) };
+  });
+  assert.equal(await callOpenRouter([], { maxTokens: 8000, reasoningEffort: 'low' }), '{}');
+});
+
 test('official source loader uses only curated URLs and removes scripts', async () => {
   const requested = [];
   const found = await loadFinanceSources({ topicGroup: 'tax', sourceUrl: 'https://evil.invalid/' }, async url => {
@@ -134,6 +160,12 @@ test('official source loader uses only curated URLs and removes scripts', async 
   assert.ok(requested.every(url => new URL(url).hostname === 'www.nalog.gov.ru'));
   assert.equal(found.length, 2);
   assert.doesNotMatch(found[0].text, /IGNORE/);
+});
+
+test('a fabricated source quotation cannot pass factual approval', async () => {
+  const verdict = { onTopic: true, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: [], claims: [{ claim: 'Надбавка назначается автоматически', sourceUrl: 'https://sfr.gov.ru/example', quote: 'Это выдуманная цитата, которой нет на странице' }] };
+  const issues = await reviewFinanceArticle(parseArticle(payload()), { ...topic, factualSources: [{ url: 'https://sfr.gov.ru/example', text: 'Вопросы оформления уточняются при обращении.' }] }, async () => JSON.stringify(verdict));
+  assert.ok(issues.some(issue => /не содержит/.test(issue)));
 });
 
 test('read official references survive site RSS and do not contaminate body counts', () => {
