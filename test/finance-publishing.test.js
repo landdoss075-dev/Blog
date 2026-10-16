@@ -130,6 +130,24 @@ test('a longer revision reaches semantic review and its findings drive the next 
   assert.equal(calls, 5);
 });
 
+test('a substantial draft is fact-checked before a length revision uses the remaining budget', async () => {
+  const data = JSON.parse(payload());
+  data.html = data.html.repeat(5);
+  const raw = JSON.stringify(data);
+  const words = parseArticle(raw).bodyWords;
+  assert.ok(words >= 250);
+  data.html += '<p>Проверьте исходные сведения отдельно и сохраните письменный ответ для дальнейшего сравнения.</p>';
+  const responses = [raw, approve, JSON.stringify(data), approve];
+  let calls = 0;
+  await generateArticle({ ...topic, minWords: words + 5 }, { name: 'test', provider: { model: () => 'test', call: async messages => {
+    calls++;
+    if (calls === 2) assert.match(messages[0].content, /проверяющий факты/);
+    if (calls === 3) assert.match(messages[1].content, /тело слишком короткое/);
+    return responses.shift();
+  } } });
+  assert.equal(calls, 4);
+});
+
 test('persistent semantic rejection stops publication after the existing revision budget', async () => {
   let calls = 0;
   const reject = JSON.stringify({ onTopic: false, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: ['Текст не отвечает исходному вопросу'] });

@@ -44,8 +44,9 @@ export async function generateArticle(topic, options = {}) {
   const callProvider = messages => provider.call(messages, topic.strictFinance ? { maxTokens: 8000, reasoningEffort: 'low' } : undefined);
   const checkCandidate = async candidate => {
     const issues = qualityIssues(candidate, topic);
-    // Дорогая смысловая проверка — только после прохождения простых ограничений.
-    if (topic.strictFinance && !issues.length) {
+    // Проверяем содержательный черновик даже при небольшом недоборе объёма:
+    // иначе фактические ошибки впервые обнаруживаются после последней редактуры.
+    if (topic.strictFinance && (candidate.bodyWords || 0) >= Math.min(topic.minWords || 650, 250)) {
       issues.push(...await reviewFinanceArticle(candidate, topic, callProvider));
     }
     return issues;
