@@ -7,7 +7,7 @@ import { createFinanceDraftRecorder, renderFinanceDraftDocument } from '../src/f
 import { sendFinanceFailure } from '../scripts/notify_finance_failure.js';
 import { generateArticle } from '../src/llm.js';
 
-const bundle = () => ({ version: 1, runId: '12345', drafts: [{ title: 'Заголовок', bodyHtml: '<p>Текст.</p>', issues: ['Не хватает источника'], passedReview: false }] });
+const bundle = () => ({ version: 1, runId: '12345', publicationStarted: false, drafts: [{ title: 'Заголовок', bodyHtml: '<p>Текст.</p>', issues: ['Не хватает источника'], passedReview: false }] });
 
 test('draft recorder preserves the latest candidate for each of at most two topics', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'finance-drafts-test-'));
@@ -37,14 +37,15 @@ test('draft document cannot execute model HTML or close its embedded JSON script
   assert.equal(payload.drafts[0].title, data.drafts[0].title);
 });
 
-test('failure alert attaches a private document and a preview-only callback, with no publishing button', async () => {
+test('failure alert attaches private preview and immediate publication buttons with an explicit risk warning', async () => {
   await sendFinanceFailure({ token: 'fake', chatId: '123', runUrl: 'https://github.com/test', draftBundle: bundle(), fetchImpl: async (url, options) => {
     assert.ok(url.endsWith('/sendDocument'));
     assert.equal(options.body.get('chat_id'), '123');
     const keyboard = JSON.parse(options.body.get('reply_markup'));
     assert.equal(keyboard.inline_keyboard[0][0].callback_data, 'finance_draft_view:0');
+    assert.equal(keyboard.inline_keyboard[0][1].callback_data, 'finance_draft_publish:0');
     assert.equal(options.body.get('document').name, 'finance-drafts-12345.html');
-    assert.ok(options.body.get('caption').includes('личном чате'));
+    assert.ok(options.body.get('caption').includes('СРАЗУ'));
     return { ok: true, json: async () => ({ ok: true, result: { message_id: 1 } }) };
   } });
 });

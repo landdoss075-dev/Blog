@@ -62,7 +62,7 @@ async function tgMultipartCall(botToken, method, fields, files) {
  *
  * `tg` — таргет ниши: { botToken, channelId }. Если не заданы — мягко пропускает.
  */
-export async function postToTelegram(article, image, tg) {
+export async function postToTelegram(article, image, tg, { noFallback = false } = {}) {
   if (!tg?.botToken || !tg?.channelId) {
     log.warn('Токен бота / id канала ниши не заданы — пропускаю Telegram.');
     return { skipped: true };
@@ -87,7 +87,7 @@ export async function postToTelegram(article, image, tg) {
     log.ok(`Опубликовано в Telegram (Rich ${r?.message_id}${hasImage ? ' с обложкой' : ''})`);
     return { skipped: false, messageId: r?.message_id, rich: true };
   } catch (err) {
-    if (hasImage) {
+    if (hasImage || noFallback) {
       throw new Error(`Единый Telegram Rich-пост с обложкой не отправлен: ${err.message}`);
     }
     log.warn(`sendRichMessage без обложки недоступен (${err.message}) — фолбэк на обычный HTML-текст.`);

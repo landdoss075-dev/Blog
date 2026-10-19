@@ -65,10 +65,11 @@ async function main() {
   // 2. Генерация статьи
   log.step(`2/5 Генерация статьи (${config.provider})`);
   let article;
+  const draftRecorder = topic.strictFinance ? createFinanceDraftRecorder() : null;
   let generationAttempts = 1;
   if (topic.strictFinance) {
     const result = await generateFinanceWithFallback(topic, {
-      onCandidate: createFinanceDraftRecorder(),
+      onCandidate: draftRecorder,
       selectFallback: async failed => prepareTopic(await fetchTopic(niche, { editorialFallback: true, excludedTopics: [failed] })),
     });
     ({ topic, article } = result);
@@ -122,6 +123,7 @@ async function main() {
   }
 
   // 4. Telegram (обложка + текст) — свой бот/канал ниши
+  if (draftRecorder) await draftRecorder.markPublicationStarted();
   log.step('4/6 Публикация в Telegram');
   const tg = await safe('Telegram', () => postToTelegram(article, image, tgTarget));
 

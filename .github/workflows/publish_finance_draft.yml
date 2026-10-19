@@ -1,0 +1,60 @@
+name: Publish Saved Finance Draft
+run-name: Saved finance draft — ${{ inputs.test_run && 'TEST ONLY' || 'admin approved' }}
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: 'Подтверждение из приватной кнопки бота (JSON)'
+        required: true
+        type: string
+      test_run:
+        description: 'Технический тест без публичных записей и OpenRouter'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: finance-post
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: landdoss075-dev/finbudni
+          path: channels/finance/docs
+          ssh-key: ${{ secrets.FINBUDNI_DEPLOY_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Validate test mode and publish the confirmed saved text
+        env:
+          FINANCE_MANUAL_REQUEST: ${{ inputs.request }}
+          WORKFLOW_TEST_RUN: ${{ inputs.test_run && 'true' || 'false' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          FINANCE_ALERT_BOT_TOKEN: ${{ secrets.FINANCE_ALERT_BOT_TOKEN }}
+          OPENROUTER_API_KEY: ${{ !inputs.test_run && secrets.OPENROUTER_API_KEY || '' }}
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER }}
+          OPENROUTER_IMAGE_MODEL: ${{ vars.OPENROUTER_IMAGE_MODEL }}
+          IMAGE_ASPECT_RATIO: ${{ vars.IMAGE_ASPECT_RATIO }}
+          IMAGE_RESOLUTION: ${{ vars.IMAGE_RESOLUTION }}
+          UNSPLASH_ACCESS_KEY: ${{ !inputs.test_run && secrets.UNSPLASH_ACCESS_KEY || '' }}
+          FINBUDNI_SITE_URL: ${{ vars.FINBUDNI_SITE_URL || 'https://finbudni.ru' }}
+          FINBUDNI_TELEGRAM_BOT_TOKEN: ${{ !inputs.test_run && secrets.FINBUDNI_TELEGRAM_BOT_TOKEN || '' }}
+          FINBUDNI_TELEGRAM_CHANNEL_ID: ${{ vars.FINBUDNI_TELEGRAM_CHANNEL_ID || '@finanbudni' }}
+          FINBUDNI_TELEGRAM_CHANNEL_URL: ${{ vars.FINBUDNI_TELEGRAM_CHANNEL_URL || 'https://t.me/finanbudni' }}
+        run: |
+          node -e 'const r=JSON.parse(process.env.FINANCE_MANUAL_REQUEST); if(String(r.testRun)!==process.env.WORKFLOW_TEST_RUN) throw Error("Test mode mismatch");'
+          node scripts/publish_finance_draft.js
+      - name: Notify private admin of the actual result
+        if: always()
+        env:
+          FINANCE_ALERT_BOT_TOKEN: ${{ secrets.FINANCE_ALERT_BOT_TOKEN }}
+          FINANCE_ALERT_CHAT_ID: ${{ secrets.FINANCE_ALERT_CHAT_ID }}
+        run: node scripts/publish_finance_draft.js --notify
