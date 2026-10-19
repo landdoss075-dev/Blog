@@ -21,7 +21,10 @@ export async function sendFinanceFailure({ token, chatId, runUrl, draftBundle, t
     method = 'sendDocument';
     body = new FormData();
     body.append('chat_id', String(chatId));
-    body.append('caption', `${text}\n\n«Просмотр» — текст только вам. «Публикация» СРАЗУ выпускает сохранённую статью в канал, на сайт и в RSS, обходя замечания проверки. Возможны ошибки — сначала прочитайте текст! Обложка может расходовать кредиты. Максимум 1 статья в день.`.slice(0, 1024));
+    const instructions = testMode
+      ? '«Просмотр» — технический текст только вам. «Тест публикации» СРАЗУ запускает безопасную проверку в Actions, без публичного выпуска и без расходов на модели.'
+      : '«Просмотр» — текст только вам. «Публикация» СРАЗУ выпускает сохранённую статью в канал, на сайт и в RSS, обходя замечания проверки. Возможны ошибки — сначала прочитайте текст! Обложка может расходовать кредиты. Максимум 1 статья в день.';
+    body.append('caption', `${text}\n\n${instructions}`.slice(0, 1024));
     body.append('document', new Blob([draftHtml], { type: 'text/html' }), `finance-drafts-${draftBundle.runId}.html`);
     body.append('reply_markup', JSON.stringify({ inline_keyboard: draftBundle.drafts.map((draft, i) => [{
       text: draftBundle.drafts.length === 1 ? '📄 Показать текст черновика' : `📄 Черновик ${i + 1}: ${draft.title.slice(0, 35)}`,
