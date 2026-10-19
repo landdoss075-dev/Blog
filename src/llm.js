@@ -42,13 +42,23 @@ export async function generateArticle(topic, options = {}) {
   // Финансовый JSON включает 650–1000 русских слов и 7 заголовков: прежний
   // лимит 4000 часто исчерпывался до появления полного содержательного ответа.
   const callProvider = messages => provider.call(messages, topic.strictFinance ? { maxTokens: 8000, reasoningEffort: 'low' } : undefined);
+  const rememberCandidate = async (candidate, issues) => {
+    if (!options.onCandidate) return;
+    try { await options.onCandidate(candidate, issues); }
+    catch { log.warn('Не удалось сохранить личный черновик; контроль качества остаётся включённым.'); }
+  };
   const checkCandidate = async candidate => {
     const issues = qualityIssues(candidate, topic);
     // Проверяем содержательный черновик даже при небольшом недоборе объёма:
     // иначе фактические ошибки впервые обнаруживаются после последней редактуры.
     if (topic.strictFinance && (candidate.bodyWords || 0) >= Math.min(topic.minWords || 650, 250)) {
-      issues.push(...await reviewFinanceArticle(candidate, topic, callProvider));
+      try { issues.push(...await reviewFinanceArticle(candidate, topic, callProvider)); }
+      catch (error) {
+        await rememberCandidate(candidate, [...issues, `Проверка не завершена: ${error.message}`]);
+        throw error;
+      }
     }
+    await rememberCandidate(candidate, issues);
     return issues;
   };
 

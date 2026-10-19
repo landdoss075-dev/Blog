@@ -5,6 +5,7 @@ import { log } from '../src/log.js';
 import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
 import { generateFinanceWithFallback } from '../src/finance-generation.js';
+import { createFinanceDraftRecorder } from '../src/finance-drafts.js';
 import { generateArticle } from '../src/llm.js';
 import { generateCoverImage } from '../src/cover_image.js';
 import { fetchImages } from '../src/unsplash.js';
@@ -67,6 +68,7 @@ async function main() {
   let generationAttempts = 1;
   if (topic.strictFinance) {
     const result = await generateFinanceWithFallback(topic, {
+      onCandidate: createFinanceDraftRecorder(),
       selectFallback: async failed => prepareTopic(await fetchTopic(niche, { editorialFallback: true, excludedTopics: [failed] })),
     });
     ({ topic, article } = result);

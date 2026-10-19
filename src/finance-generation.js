@@ -5,7 +5,7 @@ import { log } from './log.js';
 // Обе попытки целиком проходят ДО картинок и любых публикаций.
 // Ошибку отправки в Telegram/сайт нельзя обрабатывать повторной генерацией.
 export async function generateFinanceWithFallback(initialTopic, {
-  selectFallback, loadSources = loadFinanceSources, generate = generateArticle,
+  selectFallback, loadSources = loadFinanceSources, generate = generateArticle, onCandidate,
 } = {}) {
   let topic = initialTopic;
   const failures = [];
@@ -17,7 +17,7 @@ export async function generateFinanceWithFallback(initialTopic, {
         throw new Error('Ни один официальный источник не прочитан — генерация этой темы остановлена.');
       }
       log.info(`Финансовая попытка ${attempt}/2: «${topic.headline}», источников=${topic.factualSources.length}.`);
-      const article = await generate(topic);
+      const article = await generate(topic, { onCandidate: onCandidate ? (article, issues) => onCandidate(topic, article, issues) : undefined });
       return { topic, article, attemptCount: attempt };
     } catch (error) {
       failures.push(error.message);
