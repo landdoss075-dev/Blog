@@ -119,12 +119,16 @@ function editorialCandidateWords(candidate, niche) {
     .map(stem);
 }
 
-export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
+export function pickEditorialTopic(niche, recentPosts = [], now = new Date(), excludedTopics = []) {
   const pool = editorialTopicPool(niche, now);
   if (niche.strictTopicSelection) {
     const recent = recentPosts.slice(0, 30);
     const used = new Set(recent.flatMap(post => [post.source?.headline, post.source?.theme, post.title]).filter(Boolean).map(normalize));
     const usedIds = new Set(recent.map(post => post.source?.topicId).filter(Boolean));
+    for (const topic of excludedTopics) {
+      if (topic.topicId) usedIds.add(topic.topicId);
+      if (topic.headline || topic.theme) used.add(normalize(topic.headline || topic.theme));
+    }
     const eligible = pool.filter(candidate => {
       if (candidate.id && usedIds.has(candidate.id)) return false;
       if (used.has(normalize(editorialTopicText(candidate)))) return false;
@@ -148,7 +152,7 @@ export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
     const ranked = eligible.map((candidate, index) => {
       const group = editorialTopicGroup(candidate, niche);
       const weight = groups.find(item => item.key === group)?.weight || 1;
-      return { candidate, index, score: (usage.get(group) || 0) / weight + (lastGroups[0] === group ? 5 : 0) + (lastGroups.every(item => item === group) && lastGroups.length === 2 ? 20 : 0) };
+      return { candidate, index, score: (usage.get(group) || 0) / weight + (lastGroups[0] === group ? 5 : 0) + (excludedTopics.some(topic => topic.topicGroup === group) ? 5 : 0) + (lastGroups.every(item => item === group) && lastGroups.length === 2 ? 20 : 0) };
     });
     ranked.sort((a, b) => a.score - b.score || a.index - b.index);
     return ranked[0].candidate;
@@ -228,8 +232,8 @@ export function pickEditorialTopic(niche, recentPosts = [], now = new Date()) {
   return ranked[0].candidate;
 }
 
-function editorialTopicResult(niche, recentPosts, now = new Date()) {
-  const topic = pickEditorialTopic(niche, recentPosts, now);
+function editorialTopicResult(niche, recentPosts, now = new Date(), excludedTopics = []) {
+  const topic = pickEditorialTopic(niche, recentPosts, now, excludedTopics);
   const theme = editorialTopicText(topic);
   return {
     theme,
@@ -369,6 +373,9 @@ export async function fetchTopic(niche, options = {}) {
   const newsQueries = niche.newsQueries;
   const recentPosts = options.recentPosts || await loadRecentPosts(niche.dir, niche.strictTopicSelection ? 40 : 18);
   const currentDate = options.now || new Date();
+  if (options.editorialFallback) {
+    return { ...editorialTopicResult(niche, recentPosts, currentDate, options.excludedTopics || []), selectionReason: 'review-fallback' };
+  }
   if (niche.topicMode === 'editorial') {
     const result = editorialTopicResult(niche, recentPosts, currentDate);
     log.ok(`Редакционная тема [${niche.key}]: «${result.headline}»`);

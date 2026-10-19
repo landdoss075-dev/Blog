@@ -157,6 +157,21 @@ test('persistent semantic rejection stops publication after the existing revisio
   assert.equal(calls, 6);
 });
 
+test('only a remaining length deficit allows one extra revision with full semantic review', async () => {
+  const data = JSON.parse(payload());
+  data.html = data.html.repeat(5);
+  const short = JSON.stringify(data);
+  const words = parseArticle(short).bodyWords;
+  data.html += '<p>Сохраните исходные сведения и письменный ответ для последующего сравнения, затем отдельно проверьте реквизиты наследственного счёта.</p>';
+  const responses = [short, approve, short, approve, short, approve, JSON.stringify(data), approve];
+  let calls = 0;
+  const article = await generateArticle({ ...topic, minWords: words + 5 }, { name: 'test', provider: {
+    model: () => 'test', call: async () => { calls++; return responses.shift(); },
+  } });
+  assert.ok(article.bodyWords >= words + 5);
+  assert.equal(calls, 8);
+});
+
 test('empty model responses never become invented generic articles through JSON repair', async () => {
   let calls = 0;
   await assert.rejects(generateArticle(topic, { name: 'test', provider: {

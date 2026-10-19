@@ -7,7 +7,7 @@ export function financePublishedToday(posts, now = new Date()) {
 }
 
 if (process.argv[1]?.endsWith('check_finance_daily_limit.js')) {
-  if (process.env.DRY_RUN !== '1' && process.env.FORCE_PUBLISH !== '1') {
+  if (process.env.DRY_RUN !== '1') {
     const posts = JSON.parse(await readFile('channels/finance/docs/posts.json', 'utf8'));
     if (financePublishedToday(posts)) throw new Error('Сегодня по Москве статья уже опубликована. Второй автоматический выпуск запрещён.');
   }

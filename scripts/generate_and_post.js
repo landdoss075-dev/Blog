@@ -4,7 +4,7 @@ import { config, assertRequired } from '../src/config.js';
 import { log } from '../src/log.js';
 import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
-import { loadFinanceSources } from '../src/finance-review.js';
+import { generateFinanceWithFallback } from '../src/finance-generation.js';
 import { generateArticle } from '../src/llm.js';
 import { generateCoverImage } from '../src/cover_image.js';
 import { fetchImages } from '../src/unsplash.js';
@@ -33,38 +33,47 @@ async function main() {
 
   // 1. Тема дня (запросы/фильтр — из ниши)
   log.step('1/5 Поиск темы (Google News RSS)');
-  const topic = await fetchTopic(niche);
-  // Прокидываем в topic всё нишевое, что нужно генерации: голос автора, «про что», CTA.
-  topic.persona = niche.persona;
-  topic.editorialVoice = niche.editorialVoice === true;
-  topic.topicLabel = niche.topicLabel;
-  topic.promptFormats = niche.promptFormats || [];
-  topic.titleStyles = niche.titleStyles || [];
-  topic.promptGuidance = niche.promptGuidance || [];
-  topic.forbiddenTerms = niche.forbiddenTerms || [];
-  topic.minWords = niche.minWords || 650;
-  topic.promptMinWords = niche.promptMinWords || 700;
-  topic.maxWords = niche.maxWords || 1100;
-  topic.minChars = niche.minChars || 4000;
-  topic.minTitleVariants = 7;
-  topic.strictFinance = niche.strictFinance === true;
-  topic.singleDaily = niche.singleDaily === true;
-  topic.publicationSlot = publicationSlot;
-  if (topic.strictFinance) {
-    topic.factualSources = await loadFinanceSources(topic);
-    if (!topic.factualSources.length && topic.topicGroup !== 'budget') throw new Error('Ни один официальный источник не прочитан — финансовая публикация остановлена до генерации.');
-    log.info(`Источники финансовой темы: ${topic.factualSources.length}, группа=${topic.topicGroup}.`);
-  }
-  topic.cta = {
-    channelUrl: tgTarget.channelUrl,
-    channelName: niche.channelName,
-    topicLabel: niche.topicLabel,
-    ...(niche.cta || {}),
+  let topic = await fetchTopic(niche);
+  const prepareTopic = (topic) => {
+    // Все параметры ниши нужны и первой, и резервной теме.
+    topic.persona = niche.persona;
+    topic.editorialVoice = niche.editorialVoice === true;
+    topic.topicLabel = niche.topicLabel;
+    topic.promptFormats = niche.promptFormats || [];
+    topic.titleStyles = niche.titleStyles || [];
+    topic.promptGuidance = niche.promptGuidance || [];
+    topic.forbiddenTerms = niche.forbiddenTerms || [];
+    topic.minWords = niche.minWords || 650;
+    topic.promptMinWords = niche.promptMinWords || 700;
+    topic.maxWords = niche.maxWords || 1100;
+    topic.minChars = niche.minChars || 4000;
+    topic.minTitleVariants = 7;
+    topic.strictFinance = niche.strictFinance === true;
+    topic.singleDaily = niche.singleDaily === true;
+    topic.publicationSlot = publicationSlot;
+    topic.cta = {
+      channelUrl: tgTarget.channelUrl,
+      channelName: niche.channelName,
+      topicLabel: niche.topicLabel,
+      ...(niche.cta || {}),
+    };
+    return topic;
   };
+  topic = prepareTopic(topic);
 
   // 2. Генерация статьи
   log.step(`2/5 Генерация статьи (${config.provider})`);
-  const article = await generateArticle(topic);
+  let article;
+  let generationAttempts = 1;
+  if (topic.strictFinance) {
+    const result = await generateFinanceWithFallback(topic, {
+      selectFallback: async failed => prepareTopic(await fetchTopic(niche, { editorialFallback: true, excludedTopics: [failed] })),
+    });
+    ({ topic, article } = result);
+    generationAttempts = result.attemptCount;
+  } else {
+    article = await generateArticle(topic);
+  }
   article.source = {
     niche: niche.key,
     theme: topic.theme,
@@ -81,6 +90,7 @@ async function main() {
     references: (topic.factualSources || []).map(({ label, url, checkedAt }) => ({ label, url, checkedAt })),
     publicationSlot,
     selectedAt: new Date().toISOString(),
+    generationAttempts,
   };
 
   // 3. Картинки: обложка через Nano Banana/OpenRouter, inline — через Unsplash.

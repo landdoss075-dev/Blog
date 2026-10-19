@@ -19,7 +19,7 @@ on:
           - evening
         default: manual
       force_publish:
-        description: 'Разрешить ручную публикацию вне планового окна'
+        description: 'Разрешить ручную публикацию вне окна (не больше одной в день)'
         type: boolean
         default: false
 
@@ -158,3 +158,10 @@ jobs:
             git commit -m "finance: новая статья $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      - name: Notify admin about failed finance publication
+        if: ${{ failure() && !inputs.dry_run }}
+        env:
+          FINANCE_ALERT_BOT_TOKEN: ${{ secrets.FINANCE_ALERT_BOT_TOKEN }}
+          FINANCE_ALERT_CHAT_ID: ${{ secrets.FINANCE_ALERT_CHAT_ID }}
+        run: node scripts/notify_finance_failure.js

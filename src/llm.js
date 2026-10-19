@@ -88,7 +88,7 @@ export async function generateArticle(topic, options = {}) {
 
   if (draftIssues.length) {
     let currentIssues = draftIssues;
-    const maxRevisionAttempts = 2;
+    let maxRevisionAttempts = 2;
 
     for (let attempt = 1; attempt <= maxRevisionAttempts; attempt += 1) {
       log.warn(
@@ -101,6 +101,11 @@ export async function generateArticle(topic, options = {}) {
       );
       const revisedIssues = await checkCandidate(revised);
       if (revisedIssues.length) log.warn(`Редактура ${attempt}: ${revisedIssues.join('; ')}.`);
+      if (attempt === 2 && topic.strictFinance && revisedIssues.length
+        && revisedIssues.every(issue => /^(тело слишком короткое|мало содержательного текста)/.test(issue))) {
+        maxRevisionAttempts = 3;
+        log.info('Смысловые проверки пройдены: одна дополнительная доработка только объёма, без снижения порогов.');
+      }
 
       if (!revisedIssues.length) {
         article = revised;
@@ -120,7 +125,7 @@ export async function generateArticle(topic, options = {}) {
 
       if (attempt === maxRevisionAttempts) {
         throw new Error(
-          `Статья не прошла контроль после двух адресных редактур. ` +
+          `Статья не прошла контроль после ${maxRevisionAttempts === 2 ? 'двух' : 'трёх'} адресных редактур. ` +
           `Замечания: ${currentIssues.join('; ')}. ` +
           `Лучший вариант: ${article.bodyWords || 0} слов, ${article.bodyChars || 0} символов.`,
         );
