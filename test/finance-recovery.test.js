@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { generateFinanceWithFallback } from '../src/finance-generation.js';
 import { niches } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
-import { loadFinanceSources, reviewFinanceArticle } from '../src/finance-review.js';
+import { loadFinanceSources, reviewFinanceArticle, financeEvidenceSources } from '../src/finance-review.js';
 import { sendFinanceFailure } from '../scripts/notify_finance_failure.js';
 
 test('finance fallback generates exactly one approved result and excludes the failed assignment', async () => {
@@ -99,4 +99,24 @@ test('failure alert targets only an explicit private admin and does not include 
     return { ok: true, json: async () => ({ ok: true }) };
   } });
   await assert.rejects(sendFinanceFailure({ token: 'fake-token', chatId: '-100123' }), /приватные/);
+});
+
+test('server-numbered evidence is literal source text and a model cannot invent an excerpt ID', async () => {
+  const source = { url: 'https://sfr.gov.ru/example', text: 'Размер выплаты зависит от категории получателя и подтверждённых оснований.' };
+  const evidence = financeEvidenceSources([source]);
+  assert.equal(evidence[0].excerpts[0].text, source.text);
+  const verdict = { onTopic: true, titleMatches: true, useful: true, distinct: true, factsSupported: true, issues: [], claims: [{ claim: 'Размер зависит от категории', sourceUrl: source.url, excerptId: evidence[0].excerpts[0].id }] };
+  const topic = { factualSources: [source] };
+  assert.deepEqual(await reviewFinanceArticle({ title: 'Выплата', bodyHtml: '<p>Размер зависит от категории.</p>' }, topic, async () => JSON.stringify(verdict)), []);
+  verdict.claims[0].excerptId = 'invented';
+  assert.ok((await reviewFinanceArticle({ title: 'Выплата', bodyHtml: '<p>Текст</p>' }, topic, async () => JSON.stringify(verdict))).some(issue => /не содержит/.test(issue)));
+});
+
+test('evidence chunking terminates for long content and preserves the final source sentence', () => {
+  const text = 'Подтверждённое правило источника. '.repeat(300) + 'Конечная оговорка о применении.';
+  const excerpts = financeEvidenceSources([{ url: 'https://sfr.gov.ru/test', text }])[0].excerpts;
+  assert.ok(excerpts.length > 1 && excerpts.length < 30);
+  assert.ok(excerpts.every(excerpt => text.includes(excerpt.text)));
+  assert.ok(excerpts.at(-1).text.endsWith('Конечная оговорка о применении.'));
+  assert.ok(financeEvidenceSources([{ text: 'x'.repeat(3000) }])[0].excerpts.length < 10);
 });
