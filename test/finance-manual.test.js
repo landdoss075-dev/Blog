@@ -9,6 +9,7 @@ import { readConfirmedDraft, validateManualRequest, buildSavedFinanceArticle, re
 import { assertFinanceDayAvailable } from '../scripts/check_finance_daily_limit.js';
 import { sendFinanceFailure } from '../scripts/notify_finance_failure.js';
 import { postToTelegram } from '../src/telegram.js';
+import { publishToSite } from '../src/site.js';
 
 const bundle = (more = {}) => ({ version: 1, runId: '321', publicationStarted: false, drafts: [{ title: 'Сохранённая статья', bodyHtml: '<p>Точный сохранённый текст.</p>', issues: ['Нужна проверка факта'], passedReview: false,
   source: { topicId: 'budget-1', topicGroup: 'budget', currentDate: '2026-10-19', references: [{ label: 'Официальный источник', url: 'https://sfr.gov.ru/test' }] } }], ...more });
@@ -22,7 +23,8 @@ test('manual publication uses the exact saved body with normal CTA and source li
   assert.match(article.html, /Чтобы не пропустить/);
   assert.match(article.html, /https:\/\/sfr.gov.ru\/test/);
   assert.equal(article.source.manualOverride.sourceRunId, '321');
-  assert.deepEqual(article.source.manualOverride.rejectedIssues, ['Нужна проверка факта']);
+  assert.equal(article.source.manualOverride.rejectedIssueCount, 1);
+  assert.ok(!JSON.stringify(article.source).includes('Нужна проверка факта'));
 });
 
 test('tampered documents, wrong run, partially published and old documents cannot be published', () => {
@@ -95,4 +97,19 @@ test('manual Telegram send never falls back after an uncertain result, even with
   t.mock.method(globalThis, 'fetch', async () => { calls++; throw new Error('Ambiguous timeout'); });
   await assert.rejects(postToTelegram({ title: 'Тест', html: '<p>Текст</p>' }, null, { botToken: 'fake', channelId: '@fake' }, { noFallback: true }));
   assert.equal(calls, 1);
+});
+
+test('saved draft produces normal site/RSS output, keeping the body and audit metadata but no private attachment data', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'finance-manual-site-'));
+  try {
+    const html = renderFinanceDraftDocument(bundle()), input = request(html);
+    const article = buildSavedFinanceArticle(readConfirmedDraft(html, input), input, { channelName: 'Финансовые будни', cta: { subscriptionMode: 'habit' } }, {});
+    const result = await publishToSite(article, null, [], { dir, url: 'https://finbudni.ru', title: 'Финансовые будни', description: 'Разборы', author: 'Редакция', maxPosts: 50 });
+    assert.equal(result.skipped, false);
+    const posts = JSON.parse(await readFile(path.join(dir, 'posts.json'), 'utf8'));
+    assert.equal(posts.length, 1); assert.equal(posts[0].source.manualOverride.sourceRunId, '321');
+    const rss = await readFile(path.join(dir, 'rss.xml'), 'utf8');
+    assert.match(rss, /Точный сохранённый текст/); assert.match(rss, /sfr.gov.ru\/test/);
+    assert.ok(!rss.includes('fake_file')); assert.ok(!rss.includes('Нужна проверка факта'));
+  } finally { await rm(dir, { recursive: true }); }
 });

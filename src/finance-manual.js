@@ -38,7 +38,7 @@ export function buildSavedFinanceArticle(draft, input, niche, target) {
   });
   appendFinanceReferences(article, { factualSources: draft.source?.references || [], currentDate: draft.source?.currentDate || '' });
   article.source = { ...draft.source, niche: 'finance', publicationSlot: 'manual', selectedAt: new Date().toISOString(),
-    manualOverride: { sourceRunId: input.runId, draftIndex: input.index, requestId: input.requestId, rejectedIssues: draft.issues, confirmedDate: input.date } };
+    manualOverride: { sourceRunId: input.runId, draftIndex: input.index, requestId: input.requestId, rejectedIssueCount: draft.issues.length, confirmedDate: input.date } };
   return article;
 }
 
