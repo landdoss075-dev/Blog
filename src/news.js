@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import Parser from 'rss-parser';
 import { log } from './log.js';
+import { scoreFinanceReaderValue } from './finance-reader.js';
 
 const parser = new Parser({ timeout: 15000 });
 
@@ -152,10 +153,16 @@ export function pickEditorialTopic(niche, recentPosts = [], now = new Date(), ex
     const ranked = eligible.map((candidate, index) => {
       const group = editorialTopicGroup(candidate, niche);
       const weight = groups.find(item => item.key === group)?.weight || 1;
-      return { candidate, index, score: (usage.get(group) || 0) / weight + (lastGroups[0] === group ? 5 : 0) + (excludedTopics.some(topic => topic.topicGroup === group) ? 5 : 0) + (lastGroups.every(item => item === group) && lastGroups.length === 2 ? 20 : 0) };
+      const readerValue = niche.strictFinance ? scoreFinanceReaderValue(candidate, { editorial: true }) : null;
+      // A bounded 0..1 bonus cannot cancel the existing 5/20-point diversity penalties.
+      const diversityPenalty = (usage.get(group) || 0) / weight + (lastGroups[0] === group ? 5 : 0) + (excludedTopics.some(topic => topic.topicGroup === group) ? 5 : 0) + (lastGroups.every(item => item === group) && lastGroups.length === 2 ? 20 : 0);
+      return { candidate, index, readerValue, diversityPenalty, score: diversityPenalty - (readerValue?.total || 0) / 20 };
     });
     ranked.sort((a, b) => a.score - b.score || a.index - b.index);
-    return ranked[0].candidate;
+    if (!niche.strictFinance) return ranked[0].candidate;
+    const shortlist = ranked.slice(0, 3).map(item => ({ topicId: item.candidate.id || '', question: editorialTopicText(item.candidate), readerValue: item.readerValue.total, diversityPenalty: item.diversityPenalty }));
+    log.info(`Читательский отбор редакционных тем: ${JSON.stringify(shortlist)}`);
+    return { ...ranked[0].candidate, readerSelection: { version: 1, readerValue: ranked[0].readerValue, shortlist } };
   }
   const fallbackCandidates = pool.length ? pool : niche.newsQueries;
   const scheduledGroup = scheduledEditorialGroup(niche, now);
@@ -246,6 +253,7 @@ function editorialTopicResult(niche, recentPosts, now = new Date(), excludedTopi
     editorialTitleStyle: typeof topic === 'object' ? topic.titleStyle || '' : '',
     topicId: typeof topic === 'object' ? topic.id || '' : '',
     requiredAnchors: typeof topic === 'object' ? topic.requiredAnchors || [] : [],
+    ...(topic.readerSelection ? { readerSelection: topic.readerSelection } : {}),
     recentSamples: recentPosts.slice(0, 5).map(post => ({ title: post.title, excerpt: post.excerpt })),
     recentTitles: recentPosts.map((post) => post.title).filter(Boolean),
     recentTopicHints: recentPosts
@@ -465,7 +473,9 @@ export async function fetchTopic(niche, options = {}) {
       `${item.title} ${item.sourceName}`,
       niche.preferredSourceTerms || [],
     ) ? 4 : 0;
-    return { ...item, score: trendScore + freshBonus + preferredSourceBonus };
+    return { ...item, score: trendScore + freshBonus + preferredSourceBonus,
+      ...(niche.strictFinance ? { readerValue: scoreFinanceReaderValue(item) } : {}),
+    };
   });
   scored.sort((a, b) => b.score - a.score);
 
@@ -502,7 +512,13 @@ export async function fetchTopic(niche, options = {}) {
     && /капремонт/i.test(title)
     && recentPosts.some(post => /капремонт/i.test(`${post.title || ''} ${post.source?.headline || ''}`)
       && now - Date.parse(post.date) < 7 * 86400000));
-  let top = scored.find((x) => !isRecentDuplicate(x.title));
+  const distinct = scored.filter(x => !isRecentDuplicate(x.title));
+  // Keep the old minimum trend score. A reader-value bonus must not disguise a weak news item.
+  const qualified = niche.strictFinance ? distinct.filter(x => isNewsTopicStrongEnough(x.score, niche)) : [];
+  const readerRanked = qualified.filter(item => item.readerValue.total >= (niche.minNewsReaderValueScore || 0))
+    .map(item => ({ ...item, priority: item.score + item.readerValue.total / 2 }))
+    .sort((a, b) => b.priority - a.priority || b.score - a.score);
+  let top = niche.strictFinance ? readerRanked[0] || qualified[0] || distinct[0] : distinct[0];
   if (!top) {
     if (niche.strictTopicSelection) {
       log.warn(`Диагностика новостей: получено=${items.length}, свежих=${fresh.length}, неповторяющихся=0. Резерв: all-duplicates.`);
@@ -517,7 +533,9 @@ export async function fetchTopic(niche, options = {}) {
     })[0];
     log.warn('Все горячие поводы похожи на недавние — взял наименее похожий вариант из ленты.');
   }
-  if (top !== scored[0]) log.info('Похожая тема уже выходила недавно — взял другой, свежий повод.');
+  if (top.title !== scored[0].title) log.info(niche.strictFinance
+    ? 'Выбрал свежий неповторяющийся повод с учётом читательской задачи, а не только частотного счёта.'
+    : 'Похожая тема уже выходила недавно — взял другой, свежий повод.');
   log.info(`Диагностика новостей: получено=${items.length}, допустимо=${all.length}, свежих=${fresh.length}, неповторяющихся=${scored.filter(x => !isRecentDuplicate(x.title)).length}, лучший=${top.score.toFixed(1)}, максимум=${scored[0].score.toFixed(1)}.`);
 
   if (!isNewsTopicStrongEnough(top.score, niche)) {
@@ -528,6 +546,12 @@ export async function fetchTopic(niche, options = {}) {
     );
     return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'low-score', rejectedNewsScore: top.score };
   }
+
+  if (niche.strictFinance && top.readerValue.total < (niche.minNewsReaderValueScore || 0)) {
+    log.info(`Новостной счёт ${top.score.toFixed(1)}, но читательская ценность только ${top.readerValue.total}/20: беру предметную редакционную задачу.`);
+    return { ...editorialTopicResult(niche, recentPosts, currentDate), selectionReason: 'low-reader-value', rejectedNewsScore: top.score, rejectedReaderValue: top.readerValue.total };
+  }
+  if (niche.strictFinance) log.info(`Читательский отбор новостей: ${JSON.stringify(readerRanked.slice(0, 3).map(item => ({ question: item.title, newsScore: item.score, readerValue: item.readerValue.total })))}`);
 
   const trendKeywords = [...freq.entries()]
     .filter(([, c]) => c >= 2)
@@ -556,6 +580,8 @@ export async function fetchTopic(niche, options = {}) {
     recentTopicHints, // недавние инфоповоды — чтобы модель не перефразировала тот же сюжет
     topicOrigin: 'news',
     topicScore: top.score,
+    ...(niche.strictFinance ? { readerSelection: { version: 1, readerValue: top.readerValue,
+      shortlist: readerRanked.slice(0, 3).map(item => ({ question: item.title, newsScore: item.score, readerValue: item.readerValue.total })) } } : {}),
     sourceUrl: top.sourceUrl,
     selectionReason: 'fresh-distinct-news',
     recentSamples: recentPosts.slice(0, 5).map(post => ({ title: post.title, excerpt: post.excerpt })),

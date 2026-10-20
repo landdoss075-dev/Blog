@@ -90,6 +90,7 @@ async function main() {
     sourceUrl: topic.sourceUrl || '',
     selectionReason: topic.selectionReason || topic.topicOrigin,
     rejectedNewsScore: topic.rejectedNewsScore ?? null,
+    ...(topic.strictFinance ? { readerSelection: topic.readerSelection || null } : {}),
     references: (topic.factualSources || []).map(({ label, url, checkedAt }) => ({ label, url, checkedAt })),
     publicationSlot,
     selectedAt: new Date().toISOString(),
