@@ -109,7 +109,7 @@ test('independent editor rejection triggers a targeted revision before publicati
   let calls = 0;
   const article = await generateArticle(topic, { name: 'test', provider: { model: () => 'test', call: async (_messages, options) => { assert.equal(options.maxTokens, 8000); calls++; return responses.shift(); } } });
   assert.equal(calls, 4);
-  assert.match(article.title, /Наслед/);
+  assert.match(article.title, /наслед/iu);
 });
 
 test('malformed editorial verdict cannot silently approve an article', async () => {

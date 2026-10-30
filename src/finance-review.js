@@ -2,6 +2,7 @@ import { extractJson } from './prompt.js';
 import { toPlainText } from './sanitize.js';
 import { log } from './log.js';
 import { FINANCE_READER_REVIEW, financeReaderBrief } from './finance-reader.js';
+import { isFinanceMaterialUrl } from './finance-material.js';
 
 export function financeEvidenceSources(sources = []) {
   return sources.map((source, sourceIndex) => {
@@ -58,7 +59,7 @@ function sourceGroup(topic) {
   return 'pension';
 }
 
-/** Только фиксированные официальные адреса. URL из ответа модели не открываются. */
+/** Fixed references plus an already-read official index article. Model URLs are never opened. */
 export async function loadFinanceSources(topic, fetchImpl = fetch) {
   topic.topicGroup = sourceGroup(topic);
   const subject = `${topic.headline || ''} ${topic.theme || ''}`;
@@ -83,7 +84,10 @@ export async function loadFinanceSources(topic, fetchImpl = fetch) {
       return null;
     }
   }));
-  return results.filter(Boolean);
+  const primary = topic.primaryMaterial;
+  const trustedPrimary = primary?.kind === 'official-material' && primary.url === topic.sourceUrl
+    && isFinanceMaterialUrl(primary.url) && typeof primary.text === 'string' && primary.text.length >= 600 && primary.text.length <= 9000;
+  return [...(trustedPrimary ? [primary] : []), ...results.filter(Boolean)];
 }
 
 export async function reviewFinanceArticle(article, topic, call) {

@@ -4,6 +4,7 @@ import { config, assertRequired } from '../src/config.js';
 import { log } from '../src/log.js';
 import { getNiche, nicheFromArgs, resolveSite, resolveTelegram } from '../src/niches.js';
 import { fetchTopic } from '../src/news.js';
+import { selectFinanceTopic } from '../src/finance-selection.js';
 import { generateFinanceWithFallback } from '../src/finance-generation.js';
 import { createFinanceDraftRecorder } from '../src/finance-drafts.js';
 import { generateArticle } from '../src/llm.js';
@@ -33,8 +34,8 @@ async function main() {
   assertRequired();
 
   // 1. Тема дня (запросы/фильтр — из ниши)
-  log.step('1/5 Поиск темы (Google News RSS)');
-  let topic = await fetchTopic(niche);
+  log.step(niche.strictFinance ? '1/5 Поиск материала (официальные публикации → новости/резерв)' : '1/5 Поиск темы (Google News RSS)');
+  let topic = await selectFinanceTopic(niche);
   const prepareTopic = (topic) => {
     // Все параметры ниши нужны и первой, и резервной теме.
     topic.persona = niche.persona;
@@ -90,7 +91,9 @@ async function main() {
     sourceUrl: topic.sourceUrl || '',
     selectionReason: topic.selectionReason || topic.topicOrigin,
     rejectedNewsScore: topic.rejectedNewsScore ?? null,
-    ...(topic.strictFinance ? { readerSelection: topic.readerSelection || null } : {}),
+    ...(topic.strictFinance ? { readerSelection: topic.readerSelection || null,
+      materialSelection: topic.materialSelection || null, presentationFormat: topic.presentationFormat || '',
+      evidenceBasis: topic.evidenceBrief?.basis || '' } : {}),
     references: (topic.factualSources || []).map(({ label, url, checkedAt }) => ({ label, url, checkedAt })),
     publicationSlot,
     selectedAt: new Date().toISOString(),

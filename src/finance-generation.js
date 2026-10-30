@@ -1,6 +1,7 @@
 import { loadFinanceSources } from './finance-review.js';
 import { generateArticle } from './llm.js';
 import { log } from './log.js';
+import { prepareFinanceEvidence } from './finance-reader.js';
 
 // Обе попытки целиком проходят ДО картинок и любых публикаций.
 // Ошибку отправки в Telegram/сайт нельзя обрабатывать повторной генерацией.
@@ -13,9 +14,13 @@ export async function generateFinanceWithFallback(initialTopic, {
     try {
       if (attempt === 2) topic = await selectFallback(initialTopic);
       topic.factualSources = await loadSources(topic);
+      if (topic.topicOrigin === 'news' && !topic.factualSources.some(source => source.kind === 'official-material' && source.url === topic.sourceUrl)) {
+        throw new Error('Новостной заголовок без прочитанного конкретного официального материала — выбираю редакционный резерв до запроса к модели.');
+      }
       if (!topic.factualSources.length && topic.topicGroup !== 'budget') {
         throw new Error('Ни один официальный источник не прочитан — генерация этой темы остановлена.');
       }
+      prepareFinanceEvidence(topic);
       log.info(`Финансовая попытка ${attempt}/2: «${topic.headline}», источников=${topic.factualSources.length}.`);
       const article = await generate(topic, { onCandidate: onCandidate ? (article, issues) => onCandidate(topic, article, issues) : undefined });
       return { topic, article, attemptCount: attempt };

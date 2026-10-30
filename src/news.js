@@ -7,7 +7,7 @@ import { scoreFinanceReaderValue } from './finance-reader.js';
 const parser = new Parser({ timeout: 15000 });
 
 /** Недавно опубликованные статьи для защиты ежедневной ленты от повторов. */
-async function loadRecentPosts(dir, limit = 12) {
+export async function loadRecentPosts(dir, limit = 12) {
   try {
     const file = path.resolve(dir, 'posts.json');
     const posts = JSON.parse(await readFile(file, 'utf8'));
@@ -255,6 +255,7 @@ function editorialTopicResult(niche, recentPosts, now = new Date(), excludedTopi
     requiredAnchors: typeof topic === 'object' ? topic.requiredAnchors || [] : [],
     ...(topic.readerSelection ? { readerSelection: topic.readerSelection } : {}),
     recentSamples: recentPosts.slice(0, 5).map(post => ({ title: post.title, excerpt: post.excerpt })),
+    recentFormats: recentPosts.slice(0, 5).map(post => post.source?.presentationFormat || '').filter(Boolean),
     recentTitles: recentPosts.map((post) => post.title).filter(Boolean),
     recentTopicHints: recentPosts
       .slice(0, 8)
